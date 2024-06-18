@@ -3,9 +3,11 @@ on:
   push:
     branches:
       - main
+      - cepa_tpsci
   pull_request:
     branches:
       - main
+      - cepa_tpsci
 
 jobs:
   test:
