@@ -1406,7 +1406,7 @@ function do_fois_cepa(ref::TPSCIstate{T,N,R}, cluster_ops, clustered_ham;
         println(" Do CEPA: Dim = ", length(cepa_vec_i))
         println("debugging")
         # error()
-        @time e_cepa, x_cepa_i = tpsci_cepa_solve2(ref_vec_i, cepa_vec_i, cluster_ops, clustered_ham, cepa_shift, cepa_mit, tol=tol, max_iter=max_iter, verbose=verbose)
+        @time e_cepa, x_cepa = tpsci_cepa_solve(ref_vec_i, cepa_vec_i, cluster_ops, clustered_ham, cepa_shift, cepa_mit, tol=tol, max_iter=max_iter, verbose=verbose)
         
         @printf(" E(cepa) corr =                 %12.8f\n", e_cepa[1])
         @printf(" X(cepa) norm =                 %12.8f\n", sqrt(orth_dot(x_cepa, x_cepa)[1]))
