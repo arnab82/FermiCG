@@ -281,4 +281,84 @@ function _sum_pt2(sig_v, e2, Hd, E0, R)
     end
 end
 
+"""
+    compute_qdpt_energy2(ci_vector::TPSCIstate{T,N,R}, cluster_ops, clustered_ham::ClusteredOperator; 
+        nbody=4, 
+        H0="Hcmf",
+        E0=nothing, #pass in <0|H0|0>, or compute it
+        thresh_foi=1e-8, 
+        prescreen=true,
+        threaded = true,
+        verbose=1) where {T,N,R}
+        this function computes the second-order energy correction using the Quasidegenerate perturbation theory
+    args::
+    TPSCIstate{T,N,R} : TPSCIstate object
+    cluster_ops::Dict{Int64,Dict{String,Any}} : cluster operators
+    clustered_ham::ClusteredOperator : clustered Hamiltonian
+    nbody::Int64 : number of clusters
+    H0::String : zeroth-order Hamiltonian
+    E0::Union{Nothing,Vector{T}} : <0|H0|0>
+    thresh_foi::Float64 : threshold for first-order interaction space
+    prescreen::Bool : prescreening
+    threaded::Bool : use threading
+    verbose::Int64 : verbosity level
+    Return:
+    corrected_energies::Vector{T} : Pt2 corrected energies
+"""
 
+function compute_qdpt_energy(ci_vector_in::TPSCIstate{T,N,R}, cluster_ops, clustered_ham::ClusteredOperator;
+                             nbody=4, 
+                             H0="Hcmf",
+                             E0=nothing, # pass in <0|H0|0>, or compute it
+                             thresh_foi=1e-8, 
+                             prescreen=true,
+                             threaded = true,
+                             verbose=1) where {T,N,R}
+    println(" |..................................do  QDPT......................................")
+    println(" thresh_foi    :", thresh_foi) 
+    println(" prescreen     :", prescreen) 
+    println(" H0            :", H0) 
+    println(" nbody         :", nbody) 
+
+    ci_vector = deepcopy(ci_vector_in)
+    orthonormalize!(ci_vector)
+
+    # Extract the zeroth-order Hamiltonian
+    clustered_ham_0 = extract_1body_operator(clustered_ham, op_string = H0) 
+
+    if E0 == nothing
+        println(" Compute <0|H0|0>:")
+        E0 = compute_expectation_value_parallel(ci_vector, cluster_ops, clustered_ham_0)
+    end
+
+    if threaded == true
+        sig = open_matvec_thread(ci_vector, cluster_ops, clustered_ham, nbody=nbody, thresh=thresh_foi, prescreen=prescreen)
+    else
+        sig = open_matvec_serial(ci_vector, cluster_ops, clustered_ham, nbody=nbody, thresh=thresh_foi, prescreen=prescreen)
+    end
+    project_out!(sig, ci_vector)
+    # Compute off-diagonal matrix elements H_ax and H_xb
+    # Here, `a` and `b` index into the model space configurations in `ci_vector`.
+    # `x` indexes into the external space configurations in `sig`.
+    Hd = compute_diagonal(sig, cluster_ops, clustered_ham_0)
+    H_ax = build_full_H_parallel(ci_vector, sig,  cluster_ops, clustered_ham)
+    H_xb=build_full_H_parallel(sig, ci_vector,  cluster_ops, clustered_ham)
+    H2 = zeros(size(H_ax)[1], size(H_xb)[2])
+    # display(H2)
+    n = length(Hd)
+    I = Diagonal(ones(n))
+    H2=(H_ax * pinv((I*E0[1])*I - Diagonal(Hd))* H_xb)
+    println("perturbed Hamiltonian: ")
+    display(H2)
+    # Add zeroth-order Hamiltonian (H^0) contributions
+    H0=build_full_H_parallel(ci_vector, ci_vector,  cluster_ops, clustered_ham)
+    H_total = H2 + H0
+    println("Total Hamiltonian: ")
+    # display(H_total)
+    E_var=compute_expectation_value_parallel(ci_vector, cluster_ops, clustered_ham)
+    # Diagonalize the resulting Hamiltonian to get the corrected energies
+    corrected_energies = eigen(H_total).values
+
+    println("Corrected energies: ", corrected_energies)
+    return corrected_energies
+end
