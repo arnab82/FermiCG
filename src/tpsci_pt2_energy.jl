@@ -323,12 +323,9 @@ function compute_qdpt_energy(ci_vector_in::TPSCIstate{T,N,R}, cluster_ops, clust
     ci_vector = deepcopy(ci_vector_in)
     orthonormalize!(ci_vector)
 
-    # Extract the zeroth-order Hamiltonian
-    clustered_ham_0 = extract_1body_operator(clustered_ham, op_string = H0) 
-
     if E0 == nothing
-        println(" Compute <0|H0|0>:")
-        E0 = compute_expectation_value_parallel(ci_vector, cluster_ops, clustered_ham_0)
+        println(" Compute <0|H|0>:")
+        E0 = compute_expectation_value_parallel(ci_vector, cluster_ops, clustered_ham)
     end
 
     if threaded == true
@@ -337,10 +334,9 @@ function compute_qdpt_energy(ci_vector_in::TPSCIstate{T,N,R}, cluster_ops, clust
         sig = open_matvec_serial(ci_vector, cluster_ops, clustered_ham, nbody=nbody, thresh=thresh_foi, prescreen=prescreen)
     end
     project_out!(sig, ci_vector)
-    # Compute off-diagonal matrix elements H_ax and H_xb
     # Here, `a` and `b` index into the model space configurations in `ci_vector`.
     # `x` indexes into the external space configurations in `sig`.
-    Hd = compute_diagonal(sig, cluster_ops, clustered_ham_0)
+    Hd = compute_diagonal(sig, cluster_ops, clustered_ham)
     H_ax = build_full_H_parallel(ci_vector, sig,  cluster_ops, clustered_ham)
     H_xb=build_full_H_parallel(sig, ci_vector,  cluster_ops, clustered_ham)
     H2 = zeros(size(H_ax)[1], size(H_xb)[2])
@@ -348,17 +344,14 @@ function compute_qdpt_energy(ci_vector_in::TPSCIstate{T,N,R}, cluster_ops, clust
     n = length(Hd)
     I = Diagonal(ones(n))
     H2=(H_ax * pinv((I*E0[1])*I - Diagonal(Hd))* H_xb)
-    println("perturbed Hamiltonian: ")
-    display(H2)
     # Add zeroth-order Hamiltonian (H^0) contributions
     H0=build_full_H_parallel(ci_vector, ci_vector,  cluster_ops, clustered_ham)
     H_total = H2 + H0
-    println("Total Hamiltonian: ")
-    # display(H_total)
-    E_var=compute_expectation_value_parallel(ci_vector, cluster_ops, clustered_ham)
     # Diagonalize the resulting Hamiltonian to get the corrected energies
     corrected_energies = eigen(H_total).values
-
-    println("Corrected energies: ", corrected_energies)
+    @printf(" %5s %12s %12s\n", "Root", "E(0)", "E(2)")
+    for r in 1:R
+        @printf(" %5s %12.8f %12.8f\n", r, E0[r], corrected_energies[r])
+    end
     return corrected_energies
 end
