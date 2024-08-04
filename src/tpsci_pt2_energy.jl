@@ -329,16 +329,18 @@ function compute_qdpt_energy(ci_vector_in::TPSCIstate{T,N,R}, cluster_ops, clust
     end
 
     if threaded == true
-        sig = open_matvec_thread(ci_vector, cluster_ops, clustered_ham, nbody=nbody, thresh=thresh_foi, prescreen=prescreen)
+        @time sig = open_matvec_thread(ci_vector, cluster_ops, clustered_ham, nbody=nbody, thresh=thresh_foi, prescreen=prescreen)
     else
         sig = open_matvec_serial(ci_vector, cluster_ops, clustered_ham, nbody=nbody, thresh=thresh_foi, prescreen=prescreen)
     end
     project_out!(sig, ci_vector)
     # Here, `a` and `b` index into the model space configurations in `ci_vector`.
     # `x` indexes into the external space configurations in `sig`.
-    Hd = compute_diagonal(sig, cluster_ops, clustered_ham)
+    println(" Compute diagonal elements of fois ")
+    @time Hd = compute_diagonal(sig, cluster_ops, clustered_ham)
     H_ax = build_full_H_parallel(ci_vector, sig,  cluster_ops, clustered_ham)
-    H_xb=build_full_H_parallel(sig, ci_vector,  cluster_ops, clustered_ham)
+    # H_xb=build_full_H_parallel(sig, ci_vector,  cluster_ops, clustered_ham)
+    H_xb=H_ax'
     H2 = zeros(size(H_ax)[1], size(H_xb)[2])
     # display(H2)
     n = length(Hd)
