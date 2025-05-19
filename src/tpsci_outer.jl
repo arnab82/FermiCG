@@ -1,7 +1,6 @@
 using TimerOutputs
 using BlockDavidson
 using BenchmarkTools
-using Printf
 
 """
     build_full_H(ci_vector::TPSCIstate, cluster_ops, clustered_ham::ClusteredOperator)
@@ -1052,6 +1051,7 @@ end
 #    return eval.(a)
 #end
 
+
 function do_fois_ci(ref::TPSCIstate{T,N,R}, cluster_ops, clustered_ham;
                     H0          = "Hcmf",
                     max_iter    = 50,
@@ -1357,4 +1357,5 @@ function tpsci_cepa_solve(ref_vector::TPSCIstate{T,N,R}, cepa_vector::TPSCIstate
     
     return Ec[1] ,Ec[1]+e0[i]
 end
+
 

@@ -327,7 +327,6 @@ function compute_qdpt_energy(ci_vector_in::TPSCIstate{T,N,R}, cluster_ops, clust
         println(" Compute <0|H|0>:")
         E0 = compute_expectation_value_parallel(ci_vector, cluster_ops, clustered_ham)
     end
-
     if threaded == true
         @time sig = open_matvec_thread(ci_vector, cluster_ops, clustered_ham, nbody=nbody, thresh=thresh_foi, prescreen=prescreen)
     else
@@ -356,4 +355,6 @@ function compute_qdpt_energy(ci_vector_in::TPSCIstate{T,N,R}, cluster_ops, clust
         @printf(" %5s %12.8f %12.8f\n", r, E0[r], corrected_energies[r])
     end
     return corrected_energies
+
 end
+
