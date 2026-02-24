@@ -596,6 +596,101 @@ end
 #=}}}=#
 
 """
+    compute_transition_matrix(ci_vector::TPSCIstate{T,N,R}, cluster_ops, clustered_op::ClusteredOperator; nbody=4) where {T,N,R}
+
+Compute the full R×R transition matrix `M[r,s] = <ψ^r|O|ψ^s>` for all root pairs (r,s).
+
+# Arguments
+- `ci_vector`: TPSCI wavefunction with R roots
+- `cluster_ops`: cluster operators
+- `clustered_op`: clustered operator O to evaluate
+- `nbody`: maximum body order of terms to include (default 4)
+
+- Diagonal elements M[r,r] are the expectation values of `clustered_op` for each root.
+- Off-diagonal elements M[r,s] (r≠s) are the transition matrix elements (e.g., TDMs).
+"""
+function compute_transition_matrix(ci_vector::TPSCIstate{T,N,R}, cluster_ops, clustered_op::ClusteredOperator; nbody=4) where {T,N,R}
+    #={{{=#
+
+    out = zeros(T, R, R)
+
+    for (fock_bra, configs_bra) in ci_vector.data
+        for (fock_ket, configs_ket) in ci_vector.data
+            fock_trans = fock_bra - fock_ket
+
+            haskey(clustered_op, fock_trans) || continue
+
+            for (config_bra, coeff_bra) in configs_bra
+                for (config_ket, coeff_ket) in configs_ket
+
+                    me = 0.0
+                    for term in clustered_op[fock_trans]
+
+                        length(term.clusters) <= nbody || continue
+                        check_term(term, fock_bra, config_bra, fock_ket, config_ket) || continue
+
+                        me += contract_matrix_element(term, cluster_ops,
+                                                      fock_bra, config_bra,
+                                                      fock_ket, config_ket)
+                    end
+
+                    for r in 1:R
+                        for s in 1:R
+                            out[r,s] += coeff_bra[r] * coeff_ket[s] * me
+                        end
+                    end
+
+                end
+            end
+        end
+    end
+
+    return out
+end
+#=}}}=#
+
+"""
+    compute_dipole_moment(ci_vector::TPSCIstate{T,N,R}, cluster_ops, cluster_bases, dip_ints; verbose=0) where {T,N,R}
+
+Compute the dipole moment and transition dipole moments (TDMs) for all root pairs
+after a TPSCI calculation.
+
+# Arguments
+- `ci_vector`: converged TPSCI wavefunction (`TPSCIstate` with R roots)
+- `cluster_ops`: cluster operators (will be updated in-place with dipole operators)
+- `cluster_bases`: cluster basis (vector of `ClusterBasis`)
+- `dip_ints`: tuple of 3 matrices `(d_x, d_y, d_z)` - dipole integral matrices in the MO basis (norb × norb)
+
+# Returns
+Tuple of 3 R×R matrices `(Mx, My, Mz)` where `M[r,s] = <ψ^r|μ_x,y,z|ψ^s>`.
+- Diagonal `M[r,r]`: permanent dipole moment for root `r`
+- Off-diagonal `M[r,s]` (r≠s): transition dipole moment between roots `r` and `s`
+"""
+function compute_dipole_moment(ci_vector::TPSCIstate{T,N,R},
+                               cluster_ops,
+                               cluster_bases,
+                               dip_ints;
+                               verbose=0) where {T,N,R}
+    #={{{=#
+    clusters = [cb.cluster for cb in cluster_bases]
+    dip_mats = Matrix{T}[]
+
+    for (d, label) in zip(dip_ints, ["Dx", "Dy", "Dz"])
+        verbose == 0 || @printf(" Computing dipole component %s\n", label)
+        # Add intra-cluster dipole operator to cluster_ops
+        add_1e_cluster_op!(cluster_ops, cluster_bases, d, label)
+        # Build full ClusteredOperator (intra + inter-cluster terms)
+        clustered_dip = build_1e_operator(d, clusters; op_string=label)
+        # Compute transition matrix for this component
+        mat = compute_transition_matrix(ci_vector, cluster_ops, clustered_dip)
+        push!(dip_mats, mat)
+    end
+
+    return Tuple(dip_mats)
+    #=}}}=#
+end
+
+"""
     function compute_expectation_value_parallel(ci_vector::TPSCIstate{T,N,R}, cluster_ops, clustered_ham::ClusteredOperator) where {T,N,R}
 """
 function compute_expectation_value_parallel(ci_vector::TPSCIstate{T,N,R}, cluster_ops, clustered_ham::ClusteredOperator) where {T,N,R}

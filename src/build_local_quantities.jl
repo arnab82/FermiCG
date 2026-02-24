@@ -229,6 +229,46 @@ end
 
 
 """
+    tdm_1e(cb::ClusterBasis, h1::AbstractMatrix{T}; verbose=0) where T
+
+Compute `<s|Σ_pq h1_pq p†q|t>` between all cluster states `s` and `t`
+from accessible sectors of a cluster's fock space using a 1-body integral matrix `h1`.
+
+# Arguments
+- `cb`: cluster basis
+- `h1`: 1-body integral matrix in the local cluster orbital basis (norbs × norbs)
+- `verbose`: verbosity level (0 = silent)
+
+Returns `Dict[((na,nb),(na,nb))] => Matrix`
+"""
+function tdm_1e(cb::ClusterBasis, h1::AbstractMatrix{T}; verbose=0) where T
+#={{{=#
+    norbs = length(cb.cluster)
+    h2 = zeros(T, norbs, norbs, norbs, norbs)
+    ints_1e = InCoreInts(zero(T), h1, h2)
+    return tdm_H(cb, ints_1e; verbose=verbose)
+#=}}}=#
+end
+
+
+"""
+    add_1e_cluster_op!(cluster_ops, cluster_bases, h1::AbstractMatrix{T}, op_string::String) where T
+
+Add a 1-electron cluster operator to each cluster in `cluster_ops` using 1-body integral matrix `h1`.
+The intra-cluster matrix elements `<s|Σ_pq h1_pq p†q|t>` are stored in `cluster_ops[ci.idx][op_string]`.
+"""
+function add_1e_cluster_op!(cluster_ops, cluster_bases, h1::AbstractMatrix{T}, op_string::String) where T
+#={{{=#
+    for cb in cluster_bases
+        ci = cb.cluster
+        h1_local = convert(Matrix{T}, h1[ci.orb_list, ci.orb_list])
+        cluster_ops[ci.idx][op_string] = tdm_1e(cb, h1_local)
+    end
+#=}}}=#
+end
+
+
+"""
 """
 function tdm_S2(cb::ClusterBasis, ints; verbose=0)
 #={{{=#

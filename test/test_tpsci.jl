@@ -181,3 +181,52 @@ end
           ]
     @test isapprox(abs.(ref), abs.(e0+e2), atol=1e-4)
 end
+
+@testset "dipole moment and TDM after TPSCI" begin
+    @load "_testdata_cmf_he4.jld2"
+    
+    clustered_ham = FermiCG.extract_ClusteredTerms(ints, clusters)
+    cluster_ops = FermiCG.compute_cluster_ops(cluster_bases, ints);
+    FermiCG.add_cmf_operators!(cluster_ops, cluster_bases, ints, d1.a, d1.b);
+    
+    nroots = 5
+
+    ref_fock = FermiCG.FockConfig(init_fspace)
+    ci_vector = FermiCG.TPSCIstate(clusters, ref_fock, R=nroots, T=Float64)
+
+    ci_vector[ref_fock][ClusterConfig([2,1,1,1])] = [0,1,0,0,0]
+    ci_vector[ref_fock][ClusterConfig([1,2,1,1])] = [0,0,1,0,0]
+    ci_vector[ref_fock][ClusterConfig([1,1,2,1])] = [0,0,0,1,0]
+    ci_vector[ref_fock][ClusterConfig([1,1,1,2])] = [0,0,0,0,1]
+
+    e0, v0 = FermiCG.tpsci_ci(ci_vector, cluster_ops, clustered_ham, incremental=true, ci_conv=1e-10,
+                              thresh_cipsi=1e-3, thresh_foi=1e-8, thresh_asci=-1, conv_thresh=1e-7, ci_lindep_thresh=1e-12);
+
+    # Test 1: Hamiltonian transition matrix should be diagonal with eigenvalues on diagonal
+    H_trans = FermiCG.compute_transition_matrix(v0, cluster_ops, clustered_ham)
+    @test isapprox(diag(H_trans), e0, atol=1e-7)
+    # Off-diagonal elements should be near zero for orthonormal eigenstates
+    H_offdiag = H_trans - Diagonal(diag(H_trans))
+    @test isapprox(norm(H_offdiag), 0.0, atol=1e-7)
+
+    # Test 2: compute_dipole_moment with a symmetric 1-body "dummy" dipole integral
+    # Use h1 (symmetric) as a proxy for dipole integrals to test machinery
+    d_dummy = ints.h1
+    dip_ints = (d_dummy, d_dummy, d_dummy)
+    Mx, My, Mz = FermiCG.compute_dipole_moment(v0, cluster_ops, cluster_bases, dip_ints)
+
+    # For a real symmetric operator and real wavefunctions, transition matrix is symmetric
+    @test isapprox(Mx, Mx', atol=1e-10)
+    @test isapprox(My, My', atol=1e-10)
+    @test isapprox(Mz, Mz', atol=1e-10)
+
+    # Since all three components use same d_dummy, matrices are equal
+    @test isapprox(Mx, My, atol=1e-10)
+    @test isapprox(Mx, Mz, atol=1e-10)
+
+    # Test 3: single-component via build_1e_operator and compute_transition_matrix directly
+    FermiCG.add_1e_cluster_op!(cluster_ops, cluster_bases, d_dummy, "Dtest")
+    clustered_dip = FermiCG.build_1e_operator(d_dummy, clusters; op_string="Dtest")
+    M_direct = FermiCG.compute_transition_matrix(v0, cluster_ops, clustered_dip)
+    @test isapprox(Mx, M_direct, atol=1e-10)
+end

@@ -833,3 +833,93 @@ function extract_1body_operator(clustered_ham::ClusteredOperator{N}; op_string="
     end
     return out
 end
+
+
+"""
+    build_1e_operator(h1::AbstractMatrix{T}, clusters; op_string="D") where T
+
+Build a `ClusteredOperator` for a general 1-body operator with integral matrix `h1`.
+
+# Arguments
+- `h1`: 1-body integral matrix in the global MO basis (norb × norb)
+- `clusters`: vector of `MOCluster` objects defining the cluster partitioning
+- `op_string`: name of the pre-contracted intra-cluster operator stored in `cluster_ops`
+
+Includes both:
+- Intra-cluster (diagonal Fock) 1B terms using the pre-contracted cluster operator `op_string`
+- Inter-cluster (charge-transfer) 2B terms using existing "A"/"a" and "B"/"b" operators
+
+The intra-cluster operator `op_string` must be pre-computed and added to `cluster_ops`
+before using the returned `ClusteredOperator` in any contraction (e.g., via `add_1e_cluster_op!`).
+"""
+function build_1e_operator(h1::AbstractMatrix{T}, clusters; op_string="D") where T
+#={{{=#
+    n_clusters = length(clusters)
+    terms = ClusteredOperator(n_clusters)
+    zero_fock = TransferConfig([(Int16(0),Int16(0)) for i in clusters])
+    terms[zero_fock] = Vector{ClusteredTerm{T}}()
+
+    # 1B intra-cluster terms (pre-contracted cluster operator)
+    for ci in clusters
+        term = ClusteredTerm1B{T}((op_string,), ((0,0),), (0,), (ci,), zeros(T,1), Dict())
+        push!(terms[zero_fock], term)
+    end
+
+    # 2B inter-cluster charge-transfer terms
+    for ci in clusters
+        for cj in clusters
+            i = ci.idx
+            j = cj.idx
+            i < j || continue
+
+            spin_cases = [["A","a"], ["B","b"]]
+            fock_cases = [[(1,0),(-1,0)], [(0,1),(0,-1)]]
+
+            termstr = []
+            append!(termstr, unique(permutations([ci,cj])))
+
+            for term in termstr
+                perm, countswap = bubble_sort(term)
+                perm == sortperm(term, alg=MergeSort) || error("problem with bubble_sort")
+
+                permsign = countswap%2 != 0 ? -1 : 1
+
+                hpq = view(h1, term[1].orb_list, term[2].orb_list)
+                h = permsign .* permutedims(hpq, perm)
+
+                for sidx in 1:length(spin_cases)
+                    oper = spin_cases[sidx][perm]
+                    fock = fock_cases[sidx][perm]
+                    oper1 = ""
+                    oper2 = ""
+                    fock1 = [0,0]
+                    fock2 = [0,0]
+                    for cidx in 1:length(term[perm])
+                        if term[perm][cidx] == ci
+                            oper1 *= oper[cidx]
+                            fock1 .+= fock[cidx]
+                        elseif term[perm][cidx] == cj
+                            oper2 *= oper[cidx]
+                            fock2 .+= fock[cidx]
+                        else
+                            throw(Exception)
+                        end
+                    end
+
+                    parity1 = length(oper1)%2 != 0 ? 1 : 0
+                    parity2 = length(oper2)%2 != 0 ? 1 : 0
+
+                    clusteredterm = ClusteredTerm2B{T}((oper1,oper2), (Tuple(fock1),Tuple(fock2)), (parity1,parity2), (ci,cj), h, Dict())
+                    focktrans = replace(zero_fock, (ci.idx, cj.idx), (fock1, fock2))
+                    if haskey(terms, focktrans)
+                        push!(terms[focktrans], clusteredterm)
+                    else
+                        terms[focktrans] = [clusteredterm]
+                    end
+                end
+            end
+        end
+    end
+    return terms
+#=}}}=#
+end
