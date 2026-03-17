@@ -11,6 +11,7 @@ using Compat
 using KrylovKit
 using LinearAlgebra
 using Printf
+using Random
 using TimerOutputs
 using OrderedCollections 
 using IterTools
@@ -81,6 +82,7 @@ include("tpsci_pt2_energy.jl")
 include("tpsci_outer.jl")
 include("tpsci_helpers.jl")
 include("tpsci.jl")
+include("tpsci_trimci.jl")
 
 include("dense_inner.jl")
 include("dense_outer.jl")
