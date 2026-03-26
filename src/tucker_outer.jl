@@ -340,7 +340,6 @@ function tucker_cepa_solve(ref_vector::BSTstate{T,N,R}, cepa_vector::BSTstate, c
     	bv = -get_vector(b)
         #n_clusters = 8
     	if cepa_shift == "cepa"
-            cepa_mit = 1
 	        shift = 0.0
 	    elseif cepa_shift == "acpf"
 
@@ -364,44 +363,35 @@ function tucker_cepa_solve(ref_vector::BSTstate{T,N,R}, cepa_vector::BSTstate, c
         function mymatvec(v)
             xr = BSTstate(x_vector, R=1)
             xl = BSTstate(x_vector, R=1)
-
-            #display(size(xr))
-            #display(size(v))
-            length(xr) .== length(v) || throw(DimensionMismatch)
-            set_vector!(xr, Vector(v), root=1)
+            length(xr) == length(v) || throw(DimensionMismatch())
+            set_vector!(xr, vec(v), root=1)
             zero!(xl)
             build_sigma!(xl, xr, cluster_ops, clustered_ham, cache=cache)
-
             tmp = deepcopy(xr)
             scale!(tmp, -eshift)
             orth_add!(xl, tmp)
-            return get_vector(xl)
+            return vec(get_vector(xl))
         end
 
         @printf(" %-50s%10.6f\n", "Norm of b: ", sum(bv.*bv))
-        
-        dim = length(x_vector)
-        Axx = LinearMap(mymatvec, dim, dim)
-        #Axx = LinearMap(mymatvec, dim, dim; issymmetric=true, ismutating=false, ishermitian=true)
-
-        #flush term cache
-        #println(" Now flushing:")
         flush_cache(clustered_ham)
 
         if cache
             @printf(" %-50s", "Cache zeroth-order Hamiltonian: ")
             @time cache_hamiltonian(x_vector, x_vector, cluster_ops, clustered_ham)
         end
-       
-        for r in 1:R
-            
-            println(" Start CEPA iterations with dimension = ", length(x_vector))
-            xv = get_vector(x_vector,r)
-            time = @elapsed x, solver = cg!(xv, Axx, bv[:,r],
-                                            log=true, maxiter=max_iter, verbose=verbose, abstol=tol)
-            @printf(" %-50s%10.6f seconds\n", "Time to solve for CEPA with conjugate gradient: ", time)
 
-            set_vector!(x_vector, xv[:,1], root=r)
+        for r in 1:R
+            println(" Start CEPA iterations with dimension = ", length(x_vector))
+            x0 = vec(get_vector(x_vector, r))
+            time = @elapsed begin
+                x_sol, info = KrylovKit.linsolve(mymatvec, vec(bv[:,r]), x0;
+                                                  tol=tol, maxiter=max_iter,
+                                                  issymmetric=true, isposdef=true,
+                                                  verbosity=0)
+            end
+            @printf(" %-50s%10.6f seconds  nops=%i\n", "Time to solve CEPA (CG): ", time, info.numops)
+            set_vector!(x_vector, x_sol, root=r)
         end
         #flush term cache
         #println(" Now flushing:")
@@ -428,15 +418,16 @@ function tucker_cepa_solve(ref_vector::BSTstate{T,N,R}, cepa_vector::BSTstate, c
         #@printf(" <1|1> = %18.12f\n", orth_dot(x_vector,x_vector))
         #@printf(" <1|1> = %18.12f\n", sum(x.*x))
 
-        @printf(" E(CEPA) = %18.12f\n", (e0[1] + ecorr[1])/(1+SxC[1]))
-        Ecepa = (e0[1] + ecorr[1])/(1+SxC[1])
-        @printf(" %s %18.12f\n",cepa_shift, (e0[1] + ecorr[1])/(1+SxC[1]))
-        @printf("Iter: %4d        %18.12f %18.12f \n",it,Ec ,Ecepa-e0)
-	    if abs(Ec - (Ecepa-e0)) < 1e-15 
-            @printf(" Converged %s %18.12f\n",cepa_shift, (e0[1] + ecorr[1])/(1+SxC[1]))
-	        break
-	    end
-	Ec = Ecepa - e0
+        @printf(" E(CEPA) = %18.12f\n", (e0 + ecorr)/(1+SxC[1]))
+        Ecepa = (e0 + ecorr)/(1+SxC[1])
+        @printf(" %s %18.12f\n", cepa_shift, Ecepa)
+        @printf("Iter: %4d        %18.12f %18.12f \n", it, Ec, Ecepa-e0)
+        if abs(Ec - (Ecepa-e0)) < tol
+            @printf(" Converged %s %18.12f\n", cepa_shift, Ecepa)
+            break
+        end
+        Ec = Ecepa - e0
+        cepa_shift == "cepa" && break
     end
 
     #x, info = linsolve(Hmap,zeros(size(v0)))
@@ -555,15 +546,12 @@ function tucker_cepa_solve2(ref_vector::BSTstate, cepa_vector::BSTstate, cluster
     # Currently, we need to solve each root separately, this should be fixed
     # by writing our own CG solver
     function mymatvec(v)
-        
-        xr = BSTstate(sig, R=1)
-        xl = BSTstate(sig, R=1)
-        #@printf(" Overlap between <1|0>:          %8.1e\n", nonorth_dot(x_vector, ref_vector, verbose=0))
-        length(xr) .== length(x) || throw(DimensionMismatch)
-        set_vector!(xr,x, root=1)
+        xr = BSTstate(x_vector, R=1)
+        xl = BSTstate(x_vector, R=1)
+        length(xr) == length(v) || throw(DimensionMismatch())
+        set_vector!(xr, vec(v), root=1)
         zero!(xl)
         build_sigma!(xl, xr, cluster_ops, clustered_ham, cache=cache)
-
         tmp = deepcopy(xr)
         if do_pt2
             scale!(tmp, -e0_1b)
@@ -573,22 +561,18 @@ function tucker_cepa_solve2(ref_vector::BSTstate, cepa_vector::BSTstate, cluster
         orth_add!(xl, tmp)
         return get_vector(xl)
     end
-    dim = length(x_vector)
-    Axx = LinearMap(mymatvec, dim, dim)
-    #Axx = LinearMap(mymatvec, dim, dim; issymmetric=true, ismutating=false, ishermitian=true)
 
-    #flush term cache
-    println(" Now flushing:")
     flush_cache(clustered_ham)
-   
     println(" Start CEPA iterations with dimension = ", length(x_vector))
-    x, solver = cg!(get_vector(x_vector), Axx,bv,log=true, maxiter=max_iter, verbose=verbose, abstol=tol)
-    
-    #flush term cache
-    println(" Now flushing:")
+    x0 = vec(get_vector(x_vector))
+    x_sol, info = KrylovKit.linsolve(mymatvec, vec(bv), x0;
+                                      tol=tol, maxiter=max_iter,
+                                      issymmetric=true, isposdef=true,
+                                      verbosity=0)
+    @printf(" nops=%i\n", info.numops)
     flush_cache(clustered_ham)
 
-    set_vector!(x_vector, x)
+    set_vector!(x_vector, x_sol)
 
 
     SxC = orth_dot(Sx,x_vector)
