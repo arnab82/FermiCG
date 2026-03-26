@@ -1193,9 +1193,6 @@ function do_fois_cepa(ref::TPSCIstate{T,N,R}, cluster_ops, clustered_ham;
      println(" Compute FOIS. Reference space dim = ", length(ref_vec))
      pt1_vec = deepcopy(ref_vec)
      pt1_vec=open_matvec_thread(pt1_vec, cluster_ops, clustered_ham, nbody=nbody, thresh=thresh_foi)
-     for i in 1:R
-         @printf("Arnab: %12.8f\n", sqrt.(orth_dot(pt1_vec, pt1_vec))[i])
-     end
     project_out!(pt1_vec, ref)
     # display(pt1_vec)
 
@@ -1216,146 +1213,131 @@ function do_fois_cepa(ref::TPSCIstate{T,N,R}, cluster_ops, clustered_ham;
     end
     # 
     
-    # Solve CEPA 
+    # Solve CEPA with shared FOIS for all R roots simultaneously
     println()
-    cepa_vec = deepcopy(pt1_vec)
-    e_cepa_r=[]
-    println("Do CEPA: Dim = ", length(cepa_vec))
-    
-    # x_cepa=TPSCIstate(ref.clusters,T=T,R=R)
-    x_cepa = deepcopy(ref)
-    zero!(x_cepa)
+    println(" Do CEPA: shared FOIS dim = ", length(pt1_vec))
+    @time Ec, e_cepa = tpsci_cepa_solve(ref_vec, e0, pt1_vec, cluster_ops, clustered_ham,
+                                         cepa_shift, cepa_mit, tol=tol, verbose=verbose)
+
     for i in 1:R
-        @printf("CEPA for state %i\n", i)
-        # ref_vec_i=extract_chosen_root(ref_vec, i)
-        cepa_vec_i=extract_chosen_root(cepa_vec, i)
-        if verbose >=1 
-            display(cepa_vec_i)
-            # display(ref_vec_i)
-        end
-        println(" Do CEPA: Dim = ", length(cepa_vec_i))
-        # println("debugging")
-        # error()
-        @time e_cepa_corr,e_cepa  = tpsci_cepa_solve(ref_vec, cepa_vec_i, cluster_ops, clustered_ham, cepa_shift, cepa_mit, i=i,tol=tol,verbose=verbose)
-        
-        println(" E(cepa) for state $i   = ", e_cepa[1])
-        push!(e_cepa_r, e_cepa[1])
-        
+        @printf(" E(cepa) root %i  corr= %12.8f  total= %12.8f\n", i, Ec[i], e_cepa[i])
     end
-    for i in 1:R
-        @printf(" E(cepa)  =                 %12.8f\n", e_cepa_r[i])
-    end
-    
-    return e_cepa_r
+
+    return e_cepa
 end
 
 
 """
-    tpsci_cepa_solve(ref_vector::TPSCIstate, cepa_vector::TPSCIstate, cluster_ops, clustered_ham; tol=1e-5, cache=true)
+    tpsci_cepa_solve(ref_vector, e0, cepa_vector, cluster_ops, clustered_ham, cepa_shift, cepa_mit; tol, verbose)
+
+Multi-root CEPA solver for TPSCIstate.
 
 # Arguments
-- `ref_vector`: Input reference state. 
-- `cepa_vector`: TPSCIstate which defines the configurational space defining {X}. This 
-should be the first-order interacting space (or some compressed version of it).
-- `cluster_ops`
-- `clustered_ham`
-- `tol`: haven't yet set this up (NYI)
-- `cache`: Should we cache the compressed H operators? Speeds up drastically, but uses lots of memory
+- `ref_vector`: pre-solved reference state (R roots)
+- `e0`: reference energies for each root (length R, pre-computed by caller)
+- `cepa_vector`: shared FOIS — union of all roots' first-order interacting spaces
+- `cluster_ops`, `clustered_ham`: operators
+- `cepa_shift`: "cepa" (CEPA-0), "acpf", "aqcc", "cisd"
+- `cepa_mit`: max CEPA iterations (only relevant for acpf/aqcc)
 
-Compute compressed CEPA.
-Since there can be non-zero overlap with a multireference state, we need to generalize.
+The amplitude equation for each root I is solved independently with the shared H_xx:
+    (H_xx - (E0[I] + shift[I])) * C_x[I] = -h[I]
+    E[I] = E0[I] + C_x[I]' * h[I]
 
-    HC = SCe
+where h[I] = <Q|H|A_I> (coupling vector for root I).
 
-    |Haa + Hax| |1 | = |I   + Sax| |1 | E
-    |Hxa + Hxx| |Cx|   |Sxa + I  | |Cx|
-
-    Haa + Hax*Cx = (1 + Sax*Cx)E
-    Hxa + HxxCx = SxaE + CxE
-
-The idea for CEPA is to approximate E in the amplitude equation.
-CEPA(0): E = Eref
-
-    (Hxx-Eref)*Cx = Sxa*Eref - Hxa
-
-Ax=b
-
-After solving, the Energy can be obtained as:
-    
-    E = (Eref + Hax*Cx) / (1 + Sax*Cx)
+Fully matrix-free: never builds H_xx explicitly.
+- h[I] is computed by applying H to |A_I> via open_matvec_thread then projecting to Q.
+- CG matvec H_xx*v uses the same open_matvec_thread + Q-projection.
+This scales to Q_dim ~ 10^6 with O(Q_dim) memory.
 """
-
-function tpsci_cepa_solve(ref_vector::TPSCIstate{T,N,R}, cepa_vector::TPSCIstate, cluster_ops, clustered_ham, 
-                           cepa_shift="cepa", 
-                           cepa_mit = 50;
-                           i=1,
+function tpsci_cepa_solve(ref_vector::TPSCIstate{T,N,R}, e0::Vector,
+                           cepa_vector::TPSCIstate{T,N,R2},
+                           cluster_ops, clustered_ham,
+                           cepa_shift="cepa",
+                           cepa_mit=50;
                            tol=1e-5,
-                           verbose=0) where {T,N,R}
-    
-    
-    # H00=build_full_H(ref_vector, cluster_ops, clustered_ham)
-    # e0,v0=eigen(H00)
-    e0,v=FermiCG.tps_ci_direct(ref_vector, cluster_ops, clustered_ham, conv_thresh=tol)    
-    v0=extract_chosen_root(v, i)
-    if verbose >=1 
-        display(v0)
-    end
-    @printf("Reference Energy: %12.8f\n", e0[i])
+                           cg_maxiter=300,
+                           nbody=4,
+                           verbose=0) where {T,N,R,R2}
 
-    Ec = 0.0
-    n_clusters = length(cepa_vector.clusters)
-    E=0.0
-    for it in 1:cepa_mit 
+    n_clusters = length(ref_vector.clusters)
+    dim_q = length(cepa_vector)
 
-    	if cepa_shift == "cepa"
-	        shift = 0.0
-	    elseif cepa_shift == "acpf"
+    @printf(" CEPA solver: dim_q=%i, R=%i, shift=%s\n", dim_q, R, cepa_shift)
 
-	        shift = Ec[1] * 2.0 / n_clusters
-	    elseif cepa_shift == "aqcc"
-	        shift = (1.0 - (n_clusters-3.0)*(n_clusters - 2.0)/(n_clusters * ( n_clusters-1.0) )) * Ec[1]
-            # println("shift = ",shift)
-	    elseif cepa_shift == "cisd"
-	        shift = Ec[1]
-	    else
-            println()
-            println("NYI: cepa_shift is not available:",cepa_shift)
-            println()
-            exit()
-	    end
-        Hdd=build_full_H(cepa_vector, cluster_ops, clustered_ham)
-        # display(size(Hdd))
-        Hdd=Hdd-(e0[i] + shift)*I(size(Hdd, 1))
-
-        # Hdd .+= -Matrix{eltype(Hdd)}(I(size(Hdd, 1))) * (e0[i] + shift)
-        H0d=build_full_H_parallel(v0,cepa_vector, cluster_ops, clustered_ham)
-        # display(size(H0d))
-
-        
-        Hd0 = H0d' 
-        Cd = Hdd \ -Hd0
-        Ec= Cd'*Hd0
-
-        println(" CEPA(0) Norm  : ", @sprintf("%16.12f", norm(Cd)))
-
-        println(" CEPA correlation Energy for iteration no $it: ", @sprintf("%16.12f", Ec[1]))
-
-        # Check for convergence
-        if abs(E[1] - e0[i] - Ec[1]) < tol
-            println("Converged")
-            @printf("Reference Energy: %12.8f\n", e0[i])
-            # display(E)
-            # display(Ec)
-            @printf("Total CEPA correlation = %18.12f\n", (Ec[1]))
-            @printf("CEPA Energy = %18.12f\n", (Ec[1]+e0[i]))
-
-
-            break
+    # ── Helper: project a TPSCIstate onto Q-space, return dense vector ─────────
+    # Collects only the configs present in cepa_vector (Q-space).
+    function project_to_Q(sig::TPSCIstate, root=1)
+        v = zeros(T, dim_q)
+        idx = 0
+        for (fock, configs) in cepa_vector.data
+            for (config, _) in configs
+                idx += 1
+                if haskey(sig, fock) && haskey(sig[fock], config)
+                    v[idx] = sig[fock][config][root]
+                end
+            end
         end
-        E = (Ec[1] + e0[i])
+        return v
     end
-    
-    return Ec[1] ,Ec[1]+e0[i]
+
+    # ── h[I] = <Q|H|A_I>: apply H to root I of ref_vector, project to Q ───────
+    # Each root requires one open_matvec call (cheap: P-space only).
+    h = zeros(T, dim_q, R)
+    for i in 1:R
+        ref_i = extract_chosen_root(ref_vector, i)
+        sig_i = open_matvec_thread(ref_i, cluster_ops, clustered_ham,
+                                   nbody=nbody, thresh=0.0)
+        h[:, i] = project_to_Q(sig_i, 1)
+    end
+
+    # ── Matrix-free H_xx*v via open_matvec_thread + projection to Q ────────────
+    cepa_work = TPSCIstate(cepa_vector, R=1)   # reusable 1-root Q-space state
+    function Hq_matvec(v::Vector{T})
+        set_vector!(cepa_work, v, root=1)
+        sig = open_matvec_thread(cepa_work, cluster_ops, clustered_ham,
+                                 nbody=nbody, thresh=0.0)
+        return project_to_Q(sig, 1)
+    end
+
+    Ec      = zeros(T, R)
+    Ec_prev = fill(T(Inf), R)
+
+    for it in 1:cepa_mit
+        shifts = zeros(T, R)
+        for i in 1:R
+            if     cepa_shift == "cepa";  shifts[i] = zero(T)
+            elseif cepa_shift == "acpf";  shifts[i] = Ec[i] * 2.0 / n_clusters
+            elseif cepa_shift == "aqcc"
+                shifts[i] = (1.0 - (n_clusters-3.0)*(n_clusters-2.0) /
+                              (n_clusters*(n_clusters-1.0))) * Ec[i]
+            elseif cepa_shift == "cisd";  shifts[i] = Ec[i]
+            else;  error("Unknown cepa_shift: $cepa_shift")
+            end
+        end
+
+        # Solve (H_xx - eshift*I) * Cd = -h[I]  for each root via KrylovKit linsolve
+        for i in 1:R
+            eshift = e0[i] + shifts[i]
+            Afunc = v -> Hq_matvec(v) .- eshift .* v
+            Cd_i, info = KrylovKit.linsolve(Afunc, -h[:, i];
+                                            tol=tol, maxiter=cg_maxiter,
+                                            issymmetric=true, isposdef=true,
+                                            verbosity=0)
+            Ec[i] = dot(Cd_i, h[:, i])
+            if verbose > 0
+                @printf(" Iter %3i  Root %i  nops=%4i  E_corr = %16.12f\n",
+                        it, i, info.numops, Ec[i])
+            end
+        end
+
+        cepa_shift == "cepa" && break
+        maximum(abs.(Ec .- Ec_prev)) < tol && break
+        Ec_prev .= Ec
+    end
+
+    return Ec, e0 .+ Ec
 end
 
 

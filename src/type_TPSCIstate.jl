@@ -56,6 +56,23 @@ function TPSCIstate(v::TPSCIstate{TT,NN,RR}; T=TT, R=RR) where {TT,NN,RR}
 end
 
 """
+    extract_chosen_root(v::TPSCIstate{T,N,R}, root::Int) -> TPSCIstate{T,N,1}
+
+Return a single-root TPSCIstate containing the coefficients of `root` from `v`.
+"""
+function extract_chosen_root(v::TPSCIstate{T,N,R}, root::Int) where {T,N,R}
+    1 <= root <= R || throw(BoundsError(v, root))
+    out = TPSCIstate(v.clusters, T=T, R=1)
+    for (fock, configs) in v.data
+        add_fockconfig!(out, fock)
+        for (config, coeffs) in configs
+            out[fock][config] = MVector{1,T}([coeffs[root]])
+        end
+    end
+    return out
+end
+
+"""
     TPSCIstate(clusters::Vector{MOCluster}, fconfig::FockConfig{N}; T=Float64, R=1) where {N}
 
 Constructor using only a single FockConfig. This allows us to turn the CMF state into a TPSCIstate.
