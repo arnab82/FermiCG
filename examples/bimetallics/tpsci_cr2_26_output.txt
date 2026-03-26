@@ -1,0 +1,40 @@
+ Remove duplicates
+ Number of terms reduced from   327 to   159
+
+ Building EST spinbasis (per_sector, thresh=1e-03, target_norb=16)...
+ Fock sectors: [(7, 1), (0, 3), (4, 6), (0, 4), (5, 5), (7, 2), (4, 7), (2, 1), (6, 5), (2, 8), (2, 2), (8, 0), (1, 0), (0, 1), (3, 0), (7, 6), (0, 8), (4, 5), (8, 3), (0, 2), (1, 3), (8, 4), (1, 4), (2, 6), (3, 3), (3, 4), (2, 7), (5, 0), (0, 6), (8, 1), (6, 0), (7, 5), (1, 1), (0, 7), (5, 3), (5, 4), (1, 8), (8, 2), (1, 2), (3, 1), (2, 5), (6, 3), (3, 8), (6, 4), (3, 2), (4, 0), (0, 5), (5, 1), (1, 6), (4, 3), (4, 4), (5, 8), (5, 2), (1, 7), (3, 6), (6, 1), (7, 0), (3, 7), (6, 2), (2, 0), (4, 1), (5, 6), (8, 5), (7, 3), (1, 5), (7, 4), (4, 8), (4, 2), (5, 7), (6, 6), (2, 3), (3, 5), (2, 4), (6, 7)]
+
+------------------------------------------------------------
+Form EST Spin Basis for Cluster    1
+ Bath orbitals kept: 6 (norb_frag=10, norb_fb=16)
+ Per-sector path: FCI in 16 orbs per target sector (na_bath=3, nb_bath=3)
+ FCI sector (na_fb=10, nb_fb=4, dim=14574560, nr=1)
+ Iter:   1 SS: 1    E:  -37.25983925   R: 1.4e+00   LinDep: 0.0e+00* 
+ Iter:   2 SS: 2    E:  -38.55627645   R: 1.2e+00   LinDep: 2.8e-13* 
+ Iter:   3 SS: 3    E:  -39.22210510   R: 1.1e+00   LinDep: 1.7e-11* 
+ Iter:   4 SS: 4    E:  -39.62195406   R: 9.7e-01   LinDep: 7.4e-11* 
+ Iter:   5 SS: 5    E:  -39.94281200   R: 9.6e-01   LinDep: 1.1e-10* 
+ Linear dependency detected. Restarting.
+ Iter:   6 SS: 1    E:  -39.94281200   R: 9.6e-01   LinDep: 3.2e-11* 
+ Iter:   7 SS: 2    E:  -40.09673093   R: 8.4e-01   LinDep: 6.7e-11* 
+ Iter:   8 SS: 3    E:  -40.40117966   R: 1.1e+00   LinDep: 1.0e-10* 
+ Iter:   9 SS: 4    E:  -40.71943644   R: 1.1e+00   LinDep: 1.3e-10* 
+ Linear dependency detected. Restarting.
+ Iter:  10 SS: 1    E:  -40.71943644   R: 1.1e+00   LinDep: 3.5e-11* 
+ Iter:  11 SS: 2    E:  -40.84423956   R: 7.3e-01   LinDep: 5.7e-11* 
+ Iter:  12 SS: 3    E:  -40.98412628   R: 7.2e-01   LinDep: 8.0e-11* 
+ Iter:  13 SS: 4    E:  -41.09711696   R: 8.1e-01   LinDep: 9.4e-11* 
+ Iter:  14 SS: 5    E:  -41.33284270   R: 1.2e+00   LinDep: 1.1e-10* 
+ Linear dependency detected. Restarting.
+ Iter:  15 SS: 1    E:  -41.33284270   R: 1.2e+00   LinDep: 3.9e-11* 
+ Iter:  16 SS: 2    E:  -41.48079049   R: 9.3e-01   LinDep: 5.2e-11* 
+ Iter:  17 SS: 3    E:  -41.78242209   R: 1.5e+00   LinDep: 7.0e-11* 
+ Iter:  18 SS: 4    E:  -42.22041336   R: 1.4e+00   LinDep: 8.3e-11* 
+ Iter:  19 SS: 5    E:  -42.43353169   R: 1.0e+00   LinDep: 9.2e-11* 
+ Iter:  20 SS: 6    E:  -42.58474247   R: 8.2e-01   LinDep: 1.1e-10* 
+ Linear dependency detected. Restarting.
+ Iter:  21 SS: 1    E:  -42.58474248   R: 8.2e-01   LinDep: 3.3e-11* 
+ Iter:  22 SS: 2    E:  -42.64113985   R: 6.1e-01   LinDep: 4.8e-11* 
+ Iter:  23 SS: 3    E:  -42.71934210   R: 7.5e-01   LinDep: 6.5e-11* 
+ Iter:  24 SS: 4    E:  -42.82935905   R: 8.6e-01   LinDep: 7.8e-11* 
+ Iter:  25 SS: 5    E:  -42.93846567   R: 6.6e-01   LinDep: 8.7e-11* 

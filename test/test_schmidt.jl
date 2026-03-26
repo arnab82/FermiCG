@@ -13,7 +13,7 @@ using OrderedCollections
     nb = 4
 
     cb_cmf = FermiCG.compute_cluster_eigenbasis(ints, clusters, verbose=1, max_roots=5,rdm1a=d1.a, rdm1b=d1.b,init_fspace=init_fspace) 
-    cb_est = FermiCG.compute_cluster_est_basis(ints, clusters, d1.a, d1.b, thresh_schmidt=1e-4, init_fspace=init_fspace)
+    cb_est = FermiCG.compute_cluster_est_spinbasis(ints, clusters, d1.a, d1.b, thresh_schmidt=1e-4, init_fspace=init_fspace)
 
     
     clustered_ham = FermiCG.extract_ClusteredTerms(ints, clusters)

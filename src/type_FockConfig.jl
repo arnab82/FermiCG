@@ -11,7 +11,7 @@ struct FockConfig{N} <: SparseIndex
     config::NTuple{N,Tuple{Int16,Int16}}
 end
 
-FockConfig(in::Vector{Tuple{T,T}}) where T = convert(FockConfig{length(in)}, in)
+FockConfig(in::Vector{Tuple{T,T}}) where {T} = convert(FockConfig{length(in)}, in)
 
 
 """
@@ -86,21 +86,21 @@ function possible_spin_focksectors(clusters, ref_fock; verbose=1)
 
         na = ref_fock[ci.idx][1]
         nb = ref_fock[ci.idx][2]
-        
+
         spacesi = [(na, nb)]
         nai = na
         nbi = nb
-        if na > nb 
-            mult = na-nb + 1; 
-            for m = 2:mult 
+        if na > nb
+            mult = na - nb + 1
+            for m = 2:mult
                 nai -= 1
                 nbi += 1
                 push!(spacesi, (nai, nbi))
             end
         end
-        if na < nb 
-            mult = nb-na + 1; 
-            for m = 2:mult 
+        if na < nb
+            mult = nb - na + 1
+            for m = 2:mult
                 nai += 1
                 nbi -= 1
                 push!(spacesi, (nai, nbi))
@@ -109,7 +109,7 @@ function possible_spin_focksectors(clusters, ref_fock; verbose=1)
         push!(spaces, spacesi)
     end
     out = Vector{typeof(ref_fock)}([])
-    for (fi,f) in enumerate(Iterators.product(spaces...))
+    for (fi, f) in enumerate(Iterators.product(spaces...))
         focki = FockConfig([f...])
         FermiCG.n_elec_a(focki) == FermiCG.n_elec_a(ref_fock) || continue
         FermiCG.n_elec_b(focki) == FermiCG.n_elec_b(ref_fock) || continue
@@ -120,5 +120,29 @@ function possible_spin_focksectors(clusters, ref_fock; verbose=1)
     return out
 end
 
+function possible_spin_focksectors_percluster(ci, ref_fock; verbose=1)
+    spaces = Vector{Tuple{Int,Int}}([])
+    na = ref_fock[ci.idx][1]
+    nb = ref_fock[ci.idx][2]
 
-
+    spacesi = [(na, nb)]
+    nai = na
+    nbi = nb
+    if na > nb
+        mult = na - nb + 1
+        for m = 2:mult
+            nai -= 1
+            nbi += 1
+            push!(spacesi, (nai, nbi))
+        end
+    end
+    if na < nb
+        mult = nb - na + 1
+        for m = 2:mult
+            nai += 1
+            nbi -= 1
+            push!(spacesi, (nai, nbi))
+        end
+    end
+    return spacesi
+end

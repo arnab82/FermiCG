@@ -1,0 +1,1802 @@
+Precompiling FermiCG...
+    346.8 ms  ✓ BlockDavidson
+           ✗ CUDA
+   2753.0 ms  ✓ ActiveSpaceSolvers
+   5210.7 ms  ✓ FermiCG
+  3 dependencies successfully precompiled in 13 seconds. 283 already precompiled.
+  1 dependency had output during precompilation:
+┌ ActiveSpaceSolvers
+│  WARNING: method definition for build_S2_matrix at /Users/arnab/.julia/packages/ActiveSpaceSolvers/rpHdA/src/FCI/interface.jl:354 declares type variable T but does not use it.
+└  
+ Remove duplicates
+ Number of terms reduced from   327 to   159
+
+ Building EST spinbasis per_sector thresh=1e-4 ...
+2922.363978 seconds (506.23 M allocations: 1.608 TiB, 2.61% gc time, 0.40% compilation time: <1% of which was recompilation)
+
+ Building Spin eigenbasis M=30 ...
+  0.958884 seconds (7.73 M allocations: 413.290 MiB, 2.52% gc time, 93.81% compilation time)
+
+═══════════════════════════════════════════════════════
+ Basis: EST spinbasis per_sector thresh=1e-4
+═══════════════════════════════════════════════════════
+ Local basis sizes per cluster: 1018, 64, 1023
+FockConfig{3}(((3, 0), (3, 3), (0, 3)))
+FockConfig{3}(((2, 1), (3, 3), (1, 2)))
+FockConfig{3}(((1, 2), (3, 3), (2, 1)))
+FockConfig{3}(((0, 3), (3, 3), (3, 0)))
+ ci_vector     : (4, 4)
+ thresh_cipsi  : 0.001
+ thresh_foi    : 1.0e-5
+ thresh_asci   : nothing
+ thresh_var    : nothing
+ thresh_spin   : nothing
+ max_iter      : 30
+ conv_thresh   : 0.0001
+ nbody         : 4
+ incremental   : true
+ ci_conv       : 1.0e-5
+ ci_max_iter   : 50
+ ci_max_ss_vecs: 12
+ ci_lindep_thresh: 1.0e-12
+ davidson      : false
+ max_mem_ci    : 20.0
+ threaded      : true
+
+
+ ===================================================================
+     Selected CI Iteration:    1 epsilon:   0.00100000
+ ===================================================================
+ Memory needed to hold full CI matrix:   0.00000013 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension =     4: 
+ Build full Hamiltonian matrix with dimension:       0.129613 seconds (465.53 k allocations: 23.815 MiB, 99.68% compilation time)
+ Now diagonalize
+ Diagonalization time:                               0.000020 seconds
+ Compute S2 expectation values:                      0.169415 seconds (237.26 k allocations: 11.893 MiB, 99.65% compilation time)
+  Root       Energy           S2
+     1 -37.54855952   4.69914497
+     2 -37.46532624   3.00041230
+     3 -37.45849617   2.66551380
+     4 -37.44098024   3.00000395
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+
+ Singular values of overlap:
+  0.000
+  0.000
+  0.000
+  0.000
+ Norm of new projection:
+   1.00000000
+   1.00000000
+   1.00000000
+   1.00000000
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000062 seconds (494 allocations: 29.281 KiB)
+ Number of jobs:    79
+ Number of threads: 1
+ Compute matrix-vector:                              1.947062 seconds (19.88 M allocations: 1008.374 MiB, 5.59% gc time, 98.74% compilation time)
+ Now collect thread results :                        0.002054 seconds (208 allocations: 13.062 KiB, 98.79% compilation time)
+ Length of FOIS vector: 328789
+ Compute diagonal:                                   0.037702 seconds (37.84 k allocations: 4.507 MiB, 94.36% compilation time)
+
+
+  Root         E(0)         E(2)
+     1 -37.54855952 -36.13377014
+     2 -37.46532624 -37.82459679
+     3 -37.45849617 -33.67016560
+     4 -37.44098024 -37.53893636
+ Length of PT1  vector                            328789 →   8170
+ TPSCI Iter 1   Dim: 4      E(var):  -37.54855952  -37.46532624  -37.45849617  -37.44098024 
+
+
+ ===================================================================
+     Selected CI Iteration:    2 epsilon:   0.00100000
+ ===================================================================
+ Add pt vector to current space                        4 →   8174
+ Memory needed to hold full CI matrix:   0.53451421 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension =  8174: 
+ Fill old/old Hamiltonian:                           0.000025 seconds (4 allocations: 192 bytes)
+ Build old/new Hamiltonian matrix with dimension:    0.088712 seconds (969.04 k allocations: 24.778 MiB, 65.53% compilation time)
+ Build new/new Hamiltonian matrix with dimension:   24.696624 seconds (704.10 M allocations: 15.348 GiB, 3.86% gc time, 0.01% compilation time)
+ Now diagonalize
+ Diagonalization time:                               1.500198 seconds
+ Compute S2 expectation values:                      2.144870 seconds (147.40 M allocations: 3.184 GiB, 7.53% gc time)
+  Root       Energy           S2
+     1 -37.79837196   6.61850104
+     2 -37.79546385   6.94323911
+     3 -37.72677604   4.48232271
+     4 -37.72476329   5.62688321
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+ -0.016  0.000 -0.072 -0.099
+  0.000  0.000  0.000 -0.000
+  0.001  0.038  0.001 -0.000
+ -0.000  0.000 -0.001  0.000
+
+ Singular values of overlap:
+  0.123
+  0.038
+  0.001
+  0.000
+ Norm of new projection:
+   0.99986522
+   0.99928431
+   0.99743869
+   0.99511935
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000264 seconds (3.71 k allocations: 238.438 KiB)
+ Number of jobs:    267
+ Number of threads: 1
+ Compute matrix-vector:                              6.804674 seconds (9.89 M allocations: 320.716 MiB, 0.31% gc time)
+ Now collect thread results :                        0.000045 seconds (552 allocations: 43.312 KiB)
+ Length of FOIS vector: 658342
+ Compute diagonal:                                   0.003709 seconds (1.60 k allocations: 10.278 MiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.79837196 -37.82089867
+     2 -37.79546385 -37.82135295
+     3 -37.72677604 -37.74164038
+     4 -37.72476329 -37.74335527
+ Length of PT1  vector                            658342 →   2762
+ TPSCI Iter 2   Dim: 8174   E(var):  -37.79837196  -37.79546385  -37.72677604  -37.72476329 
+
+
+ ===================================================================
+     Selected CI Iteration:    3 epsilon:   0.00100000
+ ===================================================================
+ Add pt vector to current space                     8174 →  10936
+ Memory needed to hold full CI matrix:   0.95676877 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension = 10936: 
+ Fill old/old Hamiltonian:                           0.338289 seconds (6 allocations: 128.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:   18.370317 seconds (519.63 M allocations: 10.995 GiB, 3.98% gc time)
+ Build new/new Hamiltonian matrix with dimension:    3.220920 seconds (105.69 M allocations: 2.305 GiB, 3.37% gc time)
+ Now diagonalize
+ Diagonalization time:                               2.554091 seconds
+ Compute S2 expectation values:                      4.034160 seconds (294.43 M allocations: 6.368 GiB, 8.24% gc time)
+  Root       Energy           S2
+     1 -37.82616062   3.34926222
+     2 -37.82461281   9.90689201
+     3 -37.81980159   3.65358683
+     4 -37.78829743   3.08914013
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+  0.833 -0.384 -0.093  0.000
+  0.387  0.838  0.014  0.013
+ -0.011  0.006 -0.001 -0.000
+ -0.008  0.004  0.002  0.000
+
+ Singular values of overlap:
+  0.923
+  0.922
+  0.003
+  0.000
+ Norm of new projection:
+   0.39590693
+   0.38793040
+   0.99558416
+   0.99991148
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000275 seconds (3.71 k allocations: 238.438 KiB)
+ Number of jobs:    267
+ Number of threads: 1
+ Compute matrix-vector:                              8.414693 seconds (13.29 M allocations: 412.749 MiB, 0.29% gc time)
+ Now collect thread results :                        0.000037 seconds (552 allocations: 43.312 KiB)
+ Length of FOIS vector: 791760
+ Compute diagonal:                                   0.004238 seconds (1.60 k allocations: 10.278 MiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.82616062 -37.83285129
+     2 -37.82461281 -37.83080516
+     3 -37.81980159 -37.83034177
+     4 -37.78829743 -37.83974123
+ Length of PT1  vector                            791760 →   1548
+ TPSCI Iter 3   Dim: 10936  E(var):  -37.82616062  -37.82461281  -37.81980159  -37.78829743 
+
+
+ ===================================================================
+     Selected CI Iteration:    4 epsilon:   0.00100000
+ ===================================================================
+ Add pt vector to current space                    10936 →  12484
+ Memory needed to hold full CI matrix:   1.24680205 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension = 12484: 
+ Fill old/old Hamiltonian:                           0.593976 seconds (6 allocations: 192.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:    5.848626 seconds (162.87 M allocations: 3.634 GiB, 5.89% gc time)
+ Build new/new Hamiltonian matrix with dimension:    0.488428 seconds (15.06 M allocations: 357.623 MiB, 3.18% gc time)
+ Now diagonalize
+ Diagonalization time:                               0.875816 seconds
+ Compute S2 expectation values:                      4.698242 seconds (335.44 M allocations: 7.258 GiB, 8.63% gc time)
+  Root       Energy           S2
+     1 -37.83545176   2.54296505
+     2 -37.83407047   2.50883339
+     3 -37.82684976   4.06383129
+     4 -37.82526688  10.88647601
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+  0.159  0.051  0.983  0.062
+ -0.086  0.088  0.072 -0.989
+  0.969 -0.003 -0.153 -0.097
+ -0.002 -0.898  0.053 -0.078
+
+ Singular values of overlap:
+  0.999
+  0.999
+  0.986
+  0.903
+ Norm of new projection:
+   0.16661259
+   0.42824522
+   0.04264927
+   0.04449530
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000300 seconds (4.04 k allocations: 258.312 KiB)
+ Number of jobs:    268
+ Number of threads: 1
+ Compute matrix-vector:                              6.646428 seconds (14.74 M allocations: 434.531 MiB, 0.36% gc time)
+ Now collect thread results :                        0.000040 seconds (554 allocations: 43.375 KiB)
+ Length of FOIS vector: 904739
+ Compute diagonal:                                   0.005058 seconds (1.61 k allocations: 10.279 MiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83545176 -37.83757064
+     2 -37.83407047 -37.83689669
+     3 -37.82684976 -37.83302259
+     4 -37.82526688 -37.83099638
+ Length of PT1  vector                            904739 →    364
+ TPSCI Iter 4   Dim: 12484  E(var):  -37.83545176  -37.83407047  -37.82684976  -37.82526688 
+
+
+ ===================================================================
+     Selected CI Iteration:    5 epsilon:   0.00100000
+ ===================================================================
+ Add pt vector to current space                    12484 →  12848
+ Memory needed to hold full CI matrix:   1.32056883 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension = 12848: 
+ Fill old/old Hamiltonian:                           0.751104 seconds (6 allocations: 224.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:    1.627228 seconds (47.12 M allocations: 1.075 GiB, 3.91% gc time)
+ Build new/new Hamiltonian matrix with dimension:    0.029697 seconds (977.75 k allocations: 22.955 MiB)
+ Now diagonalize
+ Diagonalization time:                               0.655302 seconds
+ Compute S2 expectation values:                      4.883813 seconds (345.83 M allocations: 7.484 GiB, 10.78% gc time)
+  Root       Energy           S2
+     1 -37.83607267   2.55169937
+     2 -37.83545137   2.55505210
+     3 -37.82693673   4.03361703
+     4 -37.82532138  10.86192555
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+  1.000 -0.003  0.002 -0.001
+  0.003  0.999  0.006  0.007
+ -0.002 -0.006  1.000 -0.001
+ -0.001  0.006 -0.001 -1.000
+
+ Singular values of overlap:
+  1.000
+  1.000
+  1.000
+  0.999
+ Norm of new projection:
+   0.02802426
+   0.03941089
+   0.01131560
+   0.00925749
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000310 seconds (4.21 k allocations: 267.359 KiB)
+ Number of jobs:    278
+ Number of threads: 1
+ Compute matrix-vector:                              5.248763 seconds (14.80 M allocations: 417.623 MiB, 0.45% gc time)
+ Now collect thread results :                        0.000042 seconds (574 allocations: 44.000 KiB)
+ Length of FOIS vector: 914979
+ Compute diagonal:                                   0.004906 seconds (1.67 k allocations: 10.285 MiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83607267 -37.83793055
+     2 -37.83545137 -37.83759489
+     3 -37.82693673 -37.83306181
+     4 -37.82532138 -37.83103047
+ Length of PT1  vector                            914979 →     81
+ TPSCI Iter 5   Dim: 12848  E(var):  -37.83607267  -37.83545137  -37.82693673  -37.82532138 
+
+
+ ===================================================================
+     Selected CI Iteration:    6 epsilon:   0.00100000
+ ===================================================================
+ Add pt vector to current space                    12848 →  12929
+ Memory needed to hold full CI matrix:   1.33727233 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension = 12929: 
+ Fill old/old Hamiltonian:                           0.797317 seconds (6 allocations: 224.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:    0.358897 seconds (10.66 M allocations: 244.407 MiB)
+ Build new/new Hamiltonian matrix with dimension:    0.002043 seconds (59.98 k allocations: 1.397 MiB)
+ Now diagonalize
+ Diagonalization time:                               0.544941 seconds
+ Compute S2 expectation values:                      4.994585 seconds (348.23 M allocations: 7.536 GiB, 11.91% gc time)
+  Root       Energy           S2
+     1 -37.83613495   2.55283527
+     2 -37.83562161   2.56016905
+     3 -37.82694831   4.02706671
+     4 -37.82532849  10.86226953
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+ -1.000 -0.001 -0.000  0.000
+ -0.001  1.000 -0.001 -0.001
+  0.000 -0.001 -1.000  0.001
+ -0.000 -0.001 -0.001 -1.000
+
+ Singular values of overlap:
+  1.000
+  1.000
+  1.000
+  1.000
+ Norm of new projection:
+   0.00744717
+   0.01258799
+   0.00439171
+   0.00328152
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000320 seconds (4.21 k allocations: 267.359 KiB)
+ Number of jobs:    278
+ Number of threads: 1
+ Compute matrix-vector:                              5.265597 seconds (14.75 M allocations: 407.713 MiB, 0.48% gc time)
+ Now collect thread results :                        0.000043 seconds (574 allocations: 44.000 KiB)
+ Length of FOIS vector: 917185
+ Compute diagonal:                                   0.005266 seconds (1.67 k allocations: 10.285 MiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83613495 -37.83796167
+     2 -37.83562161 -37.83769142
+     3 -37.82694831 -37.83306607
+     4 -37.82532849 -37.83103279
+ Length of PT1  vector                            917185 →     10
+ TPSCI Iter 6   Dim: 12929  E(var):  -37.83613495  -37.83562161  -37.82694831  -37.82532849 
+
+
+ ===================================================================
+     Selected CI Iteration:    7 epsilon:   0.00100000
+ ===================================================================
+ Add pt vector to current space                    12929 →  12939
+ Memory needed to hold full CI matrix:   1.33934177 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension = 12939: 
+ Fill old/old Hamiltonian:                           0.779531 seconds (6 allocations: 224.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:    0.041113 seconds (1.17 M allocations: 28.400 MiB)
+ Build new/new Hamiltonian matrix with dimension:    0.000133 seconds (2.14 k allocations: 49.781 KiB)
+ Now diagonalize
+ Diagonalization time:                               0.425982 seconds
+ Compute S2 expectation values:                      5.048034 seconds (348.48 M allocations: 7.542 GiB, 11.72% gc time)
+  Root       Energy           S2
+     1 -37.83614292   2.55262449
+     2 -37.83565027   2.56125983
+     3 -37.82694976   4.02564845
+     4 -37.82533010  10.86281917
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+ -1.000  0.000  0.000  0.000
+  0.000  1.000  0.000 -0.000
+ -0.000  0.000 -1.000 -0.000
+  0.000  0.000 -0.000  1.000
+
+ Singular values of overlap:
+  1.000
+  1.000
+  1.000
+  1.000
+ Norm of new projection:
+   0.00221108
+   0.00429724
+   0.00158235
+   0.00152391
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000337 seconds (4.21 k allocations: 267.359 KiB)
+ Number of jobs:    278
+ Number of threads: 1
+ Compute matrix-vector:                              4.949752 seconds (14.72 M allocations: 404.012 MiB, 0.57% gc time)
+ Now collect thread results :                        0.000037 seconds (574 allocations: 44.000 KiB)
+ Length of FOIS vector: 917797
+ Compute diagonal:                                   0.005096 seconds (1.67 k allocations: 10.285 MiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83614292 -37.83796557
+     2 -37.83565027 -37.83770662
+     3 -37.82694976 -37.83306708
+     4 -37.82533010 -37.83103382
+ Length of PT1  vector                            917797 →      3
+*TPSCI Iter 7   Dim: 12939  E(var):  -37.83614292  -37.83565027  -37.82694976  -37.82533010 
+
+─────────────────────────────────────────────────────────────────────────
+                                Time                    Allocations      
+                       ───────────────────────   ────────────────────────
+   Tot / % measured:         144s /  93.9%            102GiB /  86.8%    
+
+Section        ncalls     time    %tot     avg     alloc    %tot      avg
+─────────────────────────────────────────────────────────────────────────
+ci                  7    94.2s   69.6%   13.5s   82.2GiB   92.9%  11.7GiB
+matvec              7    39.6s   29.3%   5.66s   3.38GiB    3.8%   495MiB
+copy               21    544ms    0.4%  25.9ms   1.27GiB    1.4%  61.8MiB
+sig rotate          7    529ms    0.4%  75.5ms   1.41GiB    1.6%   206MiB
+vec rotate          7    144ms    0.1%  20.6ms   66.2MiB    0.1%  9.46MiB
+sig update          7    121ms    0.1%  17.2ms   58.3MiB    0.1%  8.33MiB
+project out         7   66.7ms    0.0%  9.53ms   62.2MiB    0.1%  8.88MiB
+diagonal            7   66.4ms    0.0%  9.49ms   66.2MiB    0.1%  9.46MiB
+s2 extension        7    124ns    0.0%  17.7ns     0.00B    0.0%    0.00B
+─────────────────────────────────────────────────────────────────────────
+
+ |..................................do batched PT2......................................
+ thresh_foi    :1.0e-5
+ prescreen     :true
+ H0            :Hcmf
+ nbody         :4
+ Norms of input states:
+   1.00000000
+   1.00000000
+   1.00000000
+   1.00000000
+┌ Warning: ("initial guess det(v0'v0) = ", 1.0000000000000102)
+└ @ FermiCG ~/arnab/workspace/test/FermiCG/src/type_TPSCIstate.jl:580
+ Compute <0|H0|0>:                                   1.439244 seconds (102.89 M allocations: 2.297 GiB, 8.67% gc time)
+ Compute <0|H|0>:                                  946.765788 seconds (2.77 G allocations: 58.765 GiB, 0.50% gc time)
+ Number of jobs:    278
+ Number of threads: 1
+   |----------------------------------------------------------------------------------------------------|
+   |0%                                                                                              100%|
+   |--------------------------------------------------------------------------------------------|
+ Time spent computing E2        348.4 (s)
+  Root         E(0)         E(2)
+     1 -37.83614292 -37.83799066
+     2 -37.83565027 -37.83772721
+     3 -37.82694976 -37.83309080
+     4 -37.82533010 -37.83101911
+ ......................................................................................|
+
+ cipsi=1e-3  TPS= 12939
+ cipsi=1e-3                            Root      Energy    <S²>
+                                          1  -37.836143   2.553
+                                          2  -37.835650   2.561
+                                          3  -37.826950   4.026
+                                          4  -37.825330  10.863
+ ci_vector     : (12939, 4)
+ thresh_cipsi  : 0.0008
+ thresh_foi    : 1.0e-5
+ thresh_asci   : nothing
+ thresh_var    : nothing
+ thresh_spin   : nothing
+ max_iter      : 30
+ conv_thresh   : 0.0001
+ nbody         : 4
+ incremental   : true
+ ci_conv       : 1.0e-5
+ ci_max_iter   : 50
+ ci_max_ss_vecs: 12
+ ci_lindep_thresh: 1.0e-12
+ davidson      : false
+ max_mem_ci    : 20.0
+ threaded      : true
+
+
+ ===================================================================
+     Selected CI Iteration:    1 epsilon:   0.00080000
+ ===================================================================
+ Memory needed to hold full CI matrix:   1.33934177 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension = 12939: 
+ Build full Hamiltonian matrix with dimension:     458.130491 seconds (1.59 G allocations: 35.029 GiB, 0.66% gc time)
+ Now diagonalize
+ Diagonalization time:                               0.129146 seconds
+ Compute S2 expectation values:                      6.347594 seconds (348.48 M allocations: 7.542 GiB, 10.21% gc time)
+  Root       Energy           S2
+     1 -37.83614292   2.55262439
+     2 -37.83565027   2.56125990
+     3 -37.82694976   4.02564832
+     4 -37.82533010  10.86281933
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+
+ Singular values of overlap:
+  0.000
+  0.000
+  0.000
+  0.000
+ Norm of new projection:
+   1.00000000
+   1.00000000
+   1.00000000
+   1.00000000
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000266 seconds (4.21 k allocations: 267.359 KiB)
+ Number of jobs:    278
+ Number of threads: 1
+ Compute matrix-vector:                            906.099899 seconds (15.85 M allocations: 495.543 MiB, 0.01% gc time)
+ Now collect thread results :                        0.000183 seconds (574 allocations: 44.000 KiB)
+ Length of FOIS vector: 840292
+ Compute diagonal:                                   0.016691 seconds (1.67 k allocations: 10.285 MiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83614292 -37.83799066
+     2 -37.83565027 -37.83772721
+     3 -37.82694976 -37.83309080
+     4 -37.82533010 -37.83101911
+ Length of PT1  vector                            840292 →    701
+ TPSCI Iter 1   Dim: 12939  E(var):  -37.83614292  -37.83565027  -37.82694976  -37.82533010 
+
+
+ ===================================================================
+     Selected CI Iteration:    2 epsilon:   0.00080000
+ ===================================================================
+ Add pt vector to current space                    12939 →  13640
+ Memory needed to hold full CI matrix:   1.48839680 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension = 13640: 
+ Fill old/old Hamiltonian:                           4.575614 seconds (6 allocations: 224.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:   12.098193 seconds (110.23 M allocations: 2.426 GiB, 6.72% gc time)
+ Build new/new Hamiltonian matrix with dimension:    0.238926 seconds (2.76 M allocations: 69.449 MiB)
+ Now diagonalize
+ Diagonalization time:                               2.432864 seconds
+ Compute S2 expectation values:                    150.355814 seconds (371.47 M allocations: 8.042 GiB, 0.31% gc time)
+  Root       Energy           S2
+     1 -37.83657676   2.53209516
+     2 -37.83614514   2.53014372
+     3 -37.82755112   3.97119093
+     4 -37.82586230  10.96874993
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+ -1.000  0.003 -0.004  0.001
+ -0.003 -1.000 -0.004 -0.005
+  0.004  0.004 -0.999  0.023
+ -0.001  0.005 -0.023 -1.000
+
+ Singular values of overlap:
+  1.000
+  1.000
+  1.000
+  1.000
+ Norm of new projection:
+   0.01770636
+   0.01909591
+   0.02163540
+   0.02042820
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000963 seconds (4.52 k allocations: 283.406 KiB)
+ Number of jobs:    305
+ Number of threads: 1
+ Compute matrix-vector:                             16.911677 seconds (15.86 M allocations: 454.189 MiB, 0.42% gc time)
+ Now collect thread results :                        0.000098 seconds (628 allocations: 45.688 KiB)
+ Length of FOIS vector: 868189
+ Compute diagonal:                                   0.010021 seconds (1.83 k allocations: 6.881 MiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83657676 -37.83822414
+     2 -37.83614514 -37.83799193
+     3 -37.82755112 -37.83340391
+     4 -37.82586230 -37.83130093
+ Length of PT1  vector                            868189 →    118
+ TPSCI Iter 2   Dim: 13640  E(var):  -37.83657676  -37.83614514  -37.82755112  -37.82586230 
+
+
+ ===================================================================
+     Selected CI Iteration:    3 epsilon:   0.00080000
+ ===================================================================
+ Add pt vector to current space                    13640 →  13758
+ Memory needed to hold full CI matrix:   1.51426051 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension = 13758: 
+ Fill old/old Hamiltonian:                           2.950163 seconds (6 allocations: 224.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:    1.870029 seconds (21.33 M allocations: 481.864 MiB, 3.44% gc time)
+ Build new/new Hamiltonian matrix with dimension:    0.011705 seconds (118.13 k allocations: 2.750 MiB)
+ Now diagonalize
+ Diagonalization time:                               2.694916 seconds
+ Compute S2 expectation values:                    542.542940 seconds (375.05 M allocations: 8.120 GiB, 0.23% gc time)
+  Root       Energy           S2
+     1 -37.83663304   2.53109559
+     2 -37.83620970   2.52558087
+     3 -37.82760869   3.94895500
+     4 -37.82591469  10.99657105
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+  1.000  0.000  0.000 -0.000
+  0.000 -1.000  0.001  0.001
+ -0.000  0.001  1.000 -0.007
+  0.000  0.001  0.007  1.000
+
+ Singular values of overlap:
+  1.000
+  1.000
+  1.000
+  1.000
+ Norm of new projection:
+   0.00589805
+   0.00717481
+   0.00752274
+   0.00757382
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.075478 seconds (4.52 k allocations: 283.406 KiB)
+ Number of jobs:    305
+ Number of threads: 1
+ Compute matrix-vector:                              7.057412 seconds (15.78 M allocations: 436.899 MiB, 0.46% gc time)
+ Now collect thread results :                        0.000048 seconds (628 allocations: 45.688 KiB)
+ Length of FOIS vector: 870542
+ Compute diagonal:                                   0.005761 seconds (1.83 k allocations: 12.537 MiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83663304 -37.83825079
+     2 -37.83620970 -37.83802443
+     3 -37.82760869 -37.83344037
+     4 -37.82591469 -37.83133315
+ Length of PT1  vector                            870542 →     29
+*TPSCI Iter 3   Dim: 13758  E(var):  -37.83663304  -37.83620970  -37.82760869  -37.82591469 
+
+─────────────────────────────────────────────────────────────────────────
+                                Time                    Allocations      
+                       ───────────────────────   ────────────────────────
+   Tot / % measured:        2128s /  99.5%           75.3GiB /  89.6%    
+
+Section        ncalls     time    %tot     avg     alloc    %tot      avg
+─────────────────────────────────────────────────────────────────────────
+ci                  3    1185s   56.0%    395s   64.8GiB   96.2%  21.6GiB
+matvec              3     930s   43.9%    310s   1.36GiB    2.0%   465MiB
+sig rotate          3    455ms    0.0%   152ms    549MiB    0.8%   183MiB
+copy                9    442ms    0.0%  49.1ms    613MiB    0.9%  68.1MiB
+vec rotate          3   73.8ms    0.0%  24.6ms   12.4MiB    0.0%  4.13MiB
+sig update          3   56.8ms    0.0%  18.9ms   27.6MiB    0.0%  9.21MiB
+project out         3   35.3ms    0.0%  11.8ms   25.9MiB    0.0%  8.62MiB
+diagonal            3   32.8ms    0.0%  10.9ms   29.7MiB    0.0%  9.90MiB
+s2 extension        3   41.0ns    0.0%  13.7ns     0.00B    0.0%    0.00B
+─────────────────────────────────────────────────────────────────────────
+
+ |..................................do batched PT2......................................
+ thresh_foi    :1.0e-5
+ prescreen     :true
+ H0            :Hcmf
+ nbody         :4
+ Norms of input states:
+   1.00000000
+   1.00000000
+   1.00000000
+   1.00000000
+┌ Warning: ("initial guess det(v0'v0) = ", 0.9999999999999813)
+└ @ FermiCG ~/arnab/workspace/test/FermiCG/src/type_TPSCIstate.jl:580
+ Compute <0|H0|0>:                                   1.651364 seconds (110.76 M allocations: 2.473 GiB, 10.77% gc time)
+ Compute <0|H|0>:                                  109.058222 seconds (3.02 G allocations: 63.993 GiB, 3.15% gc time)
+ Number of jobs:    305
+ Number of threads: 1
+   |----------------------------------------------------------------------------------------------------|
+   |0%                                                                                              100%|
+   |-----------------------------------------------------------------------------------------------------|
+ Time spent computing E2         11.6 (s)
+  Root         E(0)         E(2)
+     1 -37.83663304 -37.83824964
+     2 -37.83620970 -37.83803022
+     3 -37.82760869 -37.83346839
+     4 -37.82591469 -37.83135348
+ ......................................................................................|
+
+ cipsi=8e-4  TPS= 13758
+ cipsi=8e-4                            Root      Energy    <S²>
+                                          1  -37.836633   2.531
+                                          2  -37.836210   2.526
+                                          3  -37.827609   3.949
+                                          4  -37.825915  10.997
+ ci_vector     : (13758, 4)
+ thresh_cipsi  : 0.0006
+ thresh_foi    : 1.0e-5
+ thresh_asci   : nothing
+ thresh_var    : nothing
+ thresh_spin   : nothing
+ max_iter      : 30
+ conv_thresh   : 0.0001
+ nbody         : 4
+ incremental   : true
+ ci_conv       : 1.0e-5
+ ci_max_iter   : 50
+ ci_max_ss_vecs: 12
+ ci_lindep_thresh: 1.0e-12
+ davidson      : false
+ max_mem_ci    : 20.0
+ threaded      : true
+
+
+ ===================================================================
+     Selected CI Iteration:    1 epsilon:   0.00060000
+ ===================================================================
+ Memory needed to hold full CI matrix:   1.51426051 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension = 13758: 
+ Build full Hamiltonian matrix with dimension:      57.907153 seconds (1.73 G allocations: 38.153 GiB, 3.62% gc time)
+ Now diagonalize
+ Diagonalization time:                               0.075289 seconds
+ Compute S2 expectation values:                      4.998377 seconds (375.05 M allocations: 8.120 GiB, 8.58% gc time)
+  Root       Energy           S2
+     1 -37.83663304   2.53109575
+     2 -37.83620970   2.52558075
+     3 -37.82760869   3.94895099
+     4 -37.82591469  10.99657502
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+
+ Singular values of overlap:
+  0.000
+  0.000
+  0.000
+  0.000
+ Norm of new projection:
+   1.00000000
+   1.00000000
+   1.00000000
+   1.00000000
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000295 seconds (4.52 k allocations: 283.406 KiB)
+ Number of jobs:    305
+ Number of threads: 1
+ Compute matrix-vector:                             11.499486 seconds (16.91 M allocations: 529.719 MiB, 0.19% gc time)
+ Now collect thread results :                        0.000046 seconds (628 allocations: 45.688 KiB)
+ Length of FOIS vector: 870789
+ Compute diagonal:                                   0.005472 seconds (1.83 k allocations: 10.303 MiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83663304 -37.83824964
+     2 -37.83620970 -37.83803022
+     3 -37.82760869 -37.83346837
+     4 -37.82591469 -37.83135346
+ Length of PT1  vector                            870789 →   1854
+ TPSCI Iter 1   Dim: 13758  E(var):  -37.83663304  -37.83620970  -37.82760869  -37.82591469 
+
+
+ ===================================================================
+     Selected CI Iteration:    2 epsilon:   0.00060000
+ ===================================================================
+ Add pt vector to current space                    13758 →  15612
+ Memory needed to hold full CI matrix:   1.94987635 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension = 15612: 
+ Fill old/old Hamiltonian:                           0.773918 seconds (6 allocations: 224.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:    9.646332 seconds (298.87 M allocations: 6.574 GiB, 4.75% gc time)
+ Build new/new Hamiltonian matrix with dimension:    0.575364 seconds (18.90 M allocations: 457.896 MiB, 3.19% gc time)
+ Now diagonalize
+ Diagonalization time:                               0.976234 seconds
+ Compute S2 expectation values:                      5.824904 seconds (436.29 M allocations: 9.456 GiB, 8.50% gc time)
+  Root       Energy           S2
+     1 -37.83722637   2.46350198
+     2 -37.83687696   2.47857848
+     3 -37.82887216   3.97948144
+     4 -37.82706468  11.07977314
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+ -1.000 -0.008  0.012  0.005
+ -0.008  1.000  0.006 -0.007
+  0.012 -0.006  0.999  0.014
+ -0.005 -0.007  0.014 -0.999
+
+ Singular values of overlap:
+  1.000
+  1.000
+  1.000
+  0.999
+ Norm of new projection:
+   0.02015697
+   0.02183179
+   0.03098556
+   0.02934259
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000356 seconds (4.94 k allocations: 307.734 KiB)
+ Number of jobs:    311
+ Number of threads: 1
+ Compute matrix-vector:                              7.180928 seconds (18.55 M allocations: 540.829 MiB, 0.72% gc time)
+ Now collect thread results :                        0.000047 seconds (640 allocations: 46.062 KiB)
+ Length of FOIS vector: 929249
+ Compute diagonal:                                   0.005323 seconds (1.87 k allocations: 7.354 MiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83722637 -37.83856322
+     2 -37.83687696 -37.83840278
+     3 -37.82887216 -37.83416688
+     4 -37.82706468 -37.83201252
+ Length of PT1  vector                            929249 →    424
+ TPSCI Iter 2   Dim: 15612  E(var):  -37.83722637  -37.83687696  -37.82887216  -37.82706468 
+
+
+ ===================================================================
+     Selected CI Iteration:    3 epsilon:   0.00060000
+ ===================================================================
+ Add pt vector to current space                    15612 →  16036
+ Memory needed to hold full CI matrix:   2.05722637 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension = 16036: 
+ Fill old/old Hamiltonian:                           1.105955 seconds (6 allocations: 256.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:    2.948525 seconds (88.42 M allocations: 1.953 GiB, 3.47% gc time)
+ Build new/new Hamiltonian matrix with dimension:    0.043778 seconds (1.40 M allocations: 32.889 MiB)
+ Now diagonalize
+ Diagonalization time:                               0.972265 seconds
+ Compute S2 expectation values:                      5.995456 seconds (452.08 M allocations: 9.801 GiB, 8.60% gc time)
+  Root       Energy           S2
+     1 -37.83728701   2.44878896
+     2 -37.83694712   2.46882946
+     3 -37.82908093   3.99616481
+     4 -37.82724705  11.08746242
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+  1.000 -0.002  0.003  0.001
+ -0.002 -1.000 -0.001  0.001
+  0.003  0.001 -1.000  0.000
+  0.001 -0.001 -0.000 -1.000
+
+ Singular values of overlap:
+  1.000
+  1.000
+  1.000
+  1.000
+ Norm of new projection:
+   0.00664879
+   0.00758946
+   0.01371329
+   0.01290309
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000377 seconds (4.94 k allocations: 307.734 KiB)
+ Number of jobs:    311
+ Number of threads: 1
+ Compute matrix-vector:                              6.321951 seconds (18.75 M allocations: 524.472 MiB, 0.42% gc time)
+ Now collect thread results :                        0.000045 seconds (640 allocations: 46.062 KiB)
+ Length of FOIS vector: 934478
+ Compute diagonal:                                   0.005405 seconds (1.87 k allocations: 7.401 MiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83728701 -37.83859387
+     2 -37.83694712 -37.83843924
+     3 -37.82908093 -37.83428353
+     4 -37.82724705 -37.83211503
+ Length of PT1  vector                            934478 →    111
+ TPSCI Iter 3   Dim: 16036  E(var):  -37.83728701  -37.83694712  -37.82908093  -37.82724705 
+
+
+ ===================================================================
+     Selected CI Iteration:    4 epsilon:   0.00060000
+ ===================================================================
+ Add pt vector to current space                    16036 →  16147
+ Memory needed to hold full CI matrix:   2.08580487 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension = 16147: 
+ Fill old/old Hamiltonian:                           1.631651 seconds (6 allocations: 256.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:    0.688280 seconds (21.78 M allocations: 511.470 MiB)
+ Build new/new Hamiltonian matrix with dimension:    0.003879 seconds (112.65 k allocations: 2.641 MiB)
+ Now diagonalize
+ Diagonalization time:                               0.806545 seconds
+ Compute S2 expectation values:                      6.177856 seconds (455.86 M allocations: 9.884 GiB, 10.95% gc time)
+  Root       Energy           S2
+     1 -37.83729417   2.44447592
+     2 -37.83696363   2.46552948
+     3 -37.82914301   4.00197231
+     4 -37.82730355  11.08915687
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+ -1.000  0.001  0.001 -0.000
+ -0.001 -1.000  0.000  0.000
+  0.001  0.000  1.000  0.000
+  0.000 -0.000  0.000 -1.000
+
+ Singular values of overlap:
+  1.000
+  1.000
+  1.000
+  1.000
+ Norm of new projection:
+   0.00246770
+   0.00354177
+   0.00694573
+   0.00654909
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000350 seconds (4.94 k allocations: 307.734 KiB)
+ Number of jobs:    311
+ Number of threads: 1
+ Compute matrix-vector:                              6.216230 seconds (18.79 M allocations: 518.293 MiB, 0.44% gc time)
+ Now collect thread results :                        0.000049 seconds (640 allocations: 46.062 KiB)
+ Length of FOIS vector: 936120
+ Compute diagonal:                                   0.005966 seconds (1.87 k allocations: 10.307 MiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83729417 -37.83859784
+     2 -37.83696363 -37.83844841
+     3 -37.82914301 -37.83431779
+     4 -37.82730355 -37.83214512
+ Length of PT1  vector                            936120 →     35
+*TPSCI Iter 4   Dim: 16147  E(var):  -37.83729417  -37.83696363  -37.82914301  -37.82730355 
+
+─────────────────────────────────────────────────────────────────────────
+                                Time                    Allocations      
+                       ───────────────────────   ────────────────────────
+   Tot / % measured:         141s /  94.9%            107GiB /  88.6%    
+
+Section        ncalls     time    %tot     avg     alloc    %tot      avg
+─────────────────────────────────────────────────────────────────────────
+ci                  4     102s   76.2%   25.5s   91.2GiB   95.9%  22.8GiB
+matvec              4    31.2s   23.3%   7.81s   2.07GiB    2.2%   531MiB
+sig rotate          4    315ms    0.2%  78.7ms    898MiB    0.9%   224MiB
+copy               12    308ms    0.2%  25.7ms    868MiB    0.9%  72.3MiB
+sig update          4   75.5ms    0.1%  18.9ms   27.4MiB    0.0%  6.85MiB
+project out         4   24.8ms    0.0%  6.21ms   46.6MiB    0.0%  11.6MiB
+diagonal            4   22.4ms    0.0%  5.59ms   35.4MiB    0.0%  8.84MiB
+vec rotate          4   8.38ms    0.0%  2.09ms   20.7MiB    0.0%  5.19MiB
+s2 extension        4   42.0ns    0.0%  10.5ns     0.00B    0.0%    0.00B
+─────────────────────────────────────────────────────────────────────────
+
+ |..................................do batched PT2......................................
+ thresh_foi    :1.0e-5
+ prescreen     :true
+ H0            :Hcmf
+ nbody         :4
+ Norms of input states:
+   1.00000000
+   1.00000000
+   1.00000000
+   1.00000000
+ Compute <0|H0|0>:                                   1.810468 seconds (134.57 M allocations: 3.005 GiB, 8.34% gc time)
+ Compute <0|H|0>:                                  136.086492 seconds (3.80 G allocations: 80.616 GiB, 3.17% gc time)
+ Number of jobs:    311
+ Number of threads: 1
+   |----------------------------------------------------------------------------------------------------|
+   |0%                                                                                              100%|
+   |-------------------------------------------------------------------------------------------------------|
+ Time spent computing E2         14.0 (s)
+  Root         E(0)         E(2)
+     1 -37.83729417 -37.83860658
+     2 -37.83696363 -37.83845674
+     3 -37.82914301 -37.83437481
+     4 -37.82730355 -37.83218351
+ ......................................................................................|
+
+ cipsi=6e-4  TPS= 16147
+ cipsi=6e-4                            Root      Energy    <S²>
+                                          1  -37.837294   2.444
+                                          2  -37.836964   2.466
+                                          3  -37.829143   4.002
+                                          4  -37.827304  11.089
+
+ thresh       Root          E(var)           E+PT2
+ 1e-3            1    -37.83614292    -37.83799066
+ 1e-3            2    -37.83565027    -37.83772721
+ 1e-3            3    -37.82694976    -37.83309080
+ 1e-3            4    -37.82533010    -37.83101911
+ 8e-4            1    -37.83663304    -37.83824964
+ 8e-4            2    -37.83620970    -37.83803022
+ 8e-4            3    -37.82760869    -37.83346839
+ 8e-4            4    -37.82591469    -37.83135348
+ 6e-4            1    -37.83729417    -37.83860658
+ 6e-4            2    -37.83696363    -37.83845674
+ 6e-4            3    -37.82914301    -37.83437481
+ 6e-4            4    -37.82730355    -37.83218351
+
+═══════════════════════════════════════════════════════
+ Basis: Spin eigenbasis M=30
+═══════════════════════════════════════════════════════
+ Local basis sizes per cluster: 414, 42, 414
+FockConfig{3}(((3, 0), (3, 3), (0, 3)))
+FockConfig{3}(((2, 1), (3, 3), (1, 2)))
+FockConfig{3}(((1, 2), (3, 3), (2, 1)))
+FockConfig{3}(((0, 3), (3, 3), (3, 0)))
+ ci_vector     : (4, 4)
+ thresh_cipsi  : 0.001
+ thresh_foi    : 1.0e-5
+ thresh_asci   : nothing
+ thresh_var    : nothing
+ thresh_spin   : nothing
+ max_iter      : 30
+ conv_thresh   : 0.0001
+ nbody         : 4
+ incremental   : true
+ ci_conv       : 1.0e-5
+ ci_max_iter   : 50
+ ci_max_ss_vecs: 12
+ ci_lindep_thresh: 1.0e-12
+ davidson      : false
+ max_mem_ci    : 20.0
+ threaded      : true
+
+
+ ===================================================================
+     Selected CI Iteration:    1 epsilon:   0.00100000
+ ===================================================================
+ Memory needed to hold full CI matrix:   0.00000013 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension =     4: 
+ Build full Hamiltonian matrix with dimension:       0.000063 seconds (740 allocations: 17.141 KiB)
+ Now diagonalize
+ Diagonalization time:                               0.000051 seconds
+ Compute S2 expectation values:                      0.000190 seconds (417 allocations: 13.375 KiB)
+  Root       Energy           S2
+     1 -37.82046064  12.00000000
+     2 -37.81998694   6.00000000
+     3 -37.81967115   2.00000000
+     4 -37.81951325   0.00000000
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+
+ Singular values of overlap:
+  0.000
+  0.000
+  0.000
+  0.000
+ Norm of new projection:
+   1.00000000
+   1.00000000
+   1.00000000
+   1.00000000
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000027 seconds (494 allocations: 29.281 KiB)
+ Number of jobs:    79
+ Number of threads: 1
+ Compute matrix-vector:                              0.003171 seconds (15.24 k allocations: 1.099 MiB)
+ Now collect thread results :                        0.000008 seconds (169 allocations: 11.438 KiB)
+ Length of FOIS vector: 8625
+ Compute diagonal:                                   0.000072 seconds (477 allocations: 120.438 KiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.82046064 -37.82398463
+     2 -37.81998694 -37.82501177
+     3 -37.81967115 -37.82569611
+     4 -37.81951325 -37.82603854
+ Length of PT1  vector                              8625 →    588
+ TPSCI Iter 1   Dim: 4      E(var):  -37.82046064  -37.81998694  -37.81967115  -37.81951325 
+
+
+ ===================================================================
+     Selected CI Iteration:    2 epsilon:   0.00100000
+ ===================================================================
+ Add pt vector to current space                        4 →    592
+ Memory needed to hold full CI matrix:   0.00280371 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension =   592: 
+ Fill old/old Hamiltonian:                           0.000001 seconds (4 allocations: 192 bytes)
+ Build old/new Hamiltonian matrix with dimension:    0.001018 seconds (23.75 k allocations: 547.078 KiB)
+ Build new/new Hamiltonian matrix with dimension:    0.048555 seconds (1.67 M allocations: 41.224 MiB)
+ Now diagonalize
+ Diagonalization time:                               0.002173 seconds
+ Compute S2 expectation values:                      0.028463 seconds (498.69 k allocations: 11.341 MiB)
+  Root       Energy           S2
+     1 -37.82959401   0.09660463
+     2 -37.82892154   2.01250319
+     3 -37.82807351   5.90535430
+     4 -37.82663437  11.98696463
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+ -0.000  0.032 -0.000 -0.996
+  0.123 -0.000  0.987 -0.000
+ -0.000  0.994  0.000  0.033
+  0.985  0.000 -0.124  0.000
+
+ Singular values of overlap:
+  0.996
+  0.995
+  0.994
+  0.993
+ Norm of new projection:
+   0.11775971
+   0.10792391
+   0.10057436
+   0.08447531
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000282 seconds (3.25 k allocations: 221.781 KiB)
+ Number of jobs:    171
+ Number of threads: 1
+ Compute matrix-vector:                              0.388557 seconds (770.35 k allocations: 25.225 MiB)
+ Now collect thread results :                        0.000021 seconds (356 allocations: 21.250 KiB)
+ Length of FOIS vector: 29360
+ Compute diagonal:                                   0.000208 seconds (1.03 k allocations: 328.500 KiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.82959401 -37.83063657
+     2 -37.82892154 -37.82995669
+     3 -37.82807351 -37.82889166
+     4 -37.82663437 -37.82717307
+ Length of PT1  vector                             29360 →    132
+ TPSCI Iter 2   Dim: 592    E(var):  -37.82959401  -37.82892154  -37.82807351  -37.82663437 
+
+
+ ===================================================================
+     Selected CI Iteration:    3 epsilon:   0.00100000
+ ===================================================================
+ Add pt vector to current space                      592 →    724
+ Memory needed to hold full CI matrix:   0.00419341 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension =   724: 
+ Fill old/old Hamiltonian:                           0.000350 seconds (6 allocations: 10.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:    0.026509 seconds (772.16 k allocations: 17.676 MiB)
+ Build new/new Hamiltonian matrix with dimension:    0.003590 seconds (112.92 k allocations: 2.689 MiB)
+ Now diagonalize
+ Diagonalization time:                               0.002631 seconds
+ Compute S2 expectation values:                      0.037360 seconds (620.08 k allocations: 14.108 MiB)
+  Root       Energy           S2
+     1 -37.83033683   0.02687010
+     2 -37.82985487   2.00758821
+     3 -37.82863531   5.97484330
+     4 -37.82679953  11.99155350
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+ -0.981 -0.000  0.189 -0.000
+ -0.000  0.997 -0.000 -0.060
+  0.188  0.000  0.981  0.000
+ -0.000  0.059 -0.000  0.998
+
+ Singular values of overlap:
+  1.000
+  1.000
+  0.999
+  0.999
+ Norm of new projection:
+   0.03972350
+   0.04585310
+   0.03117467
+   0.01586107
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000325 seconds (3.69 k allocations: 246.156 KiB)
+ Number of jobs:    171
+ Number of threads: 1
+ Compute matrix-vector:                              0.249403 seconds (886.74 k allocations: 27.703 MiB)
+ Now collect thread results :                        0.000023 seconds (356 allocations: 21.250 KiB)
+ Length of FOIS vector: 31519
+ Compute diagonal:                                   0.000216 seconds (1.03 k allocations: 344.500 KiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83033683 -37.83099053
+     2 -37.82985487 -37.83042385
+     3 -37.82863531 -37.82916081
+     4 -37.82679953 -37.82724657
+ Length of PT1  vector                             31519 →     28
+ TPSCI Iter 3   Dim: 724    E(var):  -37.83033683  -37.82985487  -37.82863531  -37.82679953 
+
+
+ ===================================================================
+     Selected CI Iteration:    4 epsilon:   0.00100000
+ ===================================================================
+ Add pt vector to current space                      724 →    752
+ Memory needed to hold full CI matrix:   0.00452403 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension =   752: 
+ Fill old/old Hamiltonian:                           0.000732 seconds (6 allocations: 12.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:    0.005430 seconds (170.50 k allocations: 4.059 MiB)
+ Build new/new Hamiltonian matrix with dimension:    0.000272 seconds (8.53 k allocations: 201.906 KiB)
+ Now diagonalize
+ Diagonalization time:                               0.002258 seconds
+ Compute S2 expectation values:                      0.037046 seconds (668.71 k allocations: 15.200 MiB)
+  Root       Energy           S2
+     1 -37.83040470   0.04631337
+     2 -37.82994734   2.01131725
+     3 -37.82868816   5.95540550
+     4 -37.82682806  11.98794847
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+ -1.000 -0.000  0.021  0.000
+  0.000 -1.000 -0.000 -0.006
+ -0.021  0.000 -1.000  0.000
+  0.000 -0.006  0.000  1.000
+
+ Singular values of overlap:
+  1.000
+  1.000
+  1.000
+  1.000
+ Norm of new projection:
+   0.00685784
+   0.00806049
+   0.00607815
+   0.00438552
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000332 seconds (3.69 k allocations: 246.156 KiB)
+ Number of jobs:    171
+ Number of threads: 1
+ Compute matrix-vector:                              0.152834 seconds (892.16 k allocations: 26.870 MiB)
+ Now collect thread results :                        0.000023 seconds (356 allocations: 21.250 KiB)
+ Length of FOIS vector: 31619
+ Compute diagonal:                                   0.000239 seconds (1.03 k allocations: 344.500 KiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83040470 -37.83101471
+     2 -37.82994734 -37.83045962
+     3 -37.82868816 -37.82918677
+     4 -37.82682806 -37.82726090
+ Length of PT1  vector                             31619 →      1
+*TPSCI Iter 4   Dim: 752    E(var):  -37.83040470  -37.82994734  -37.82868816  -37.82682806 
+
+─────────────────────────────────────────────────────────────────────────
+                                Time                    Allocations      
+                       ───────────────────────   ────────────────────────
+   Tot / % measured:        1.12s /  91.4%            328MiB /  87.8%    
+
+Section        ncalls     time    %tot     avg     alloc    %tot      avg
+─────────────────────────────────────────────────────────────────────────
+matvec              4    798ms   78.2%   199ms   89.7MiB   31.1%  22.4MiB
+ci                  4    203ms   19.9%  50.6ms    143MiB   49.7%  35.8MiB
+copy               12   8.72ms    0.9%   726μs   26.5MiB    9.2%  2.21MiB
+sig rotate          4   5.94ms    0.6%  1.48ms   23.0MiB    8.0%  5.76MiB
+sig update          4   2.61ms    0.3%   652μs   2.09MiB    0.7%   534KiB
+diagonal            4    865μs    0.1%   216μs   1.12MiB    0.4%   286KiB
+project out         4    814μs    0.1%   203μs   1.59MiB    0.6%   407KiB
+vec rotate          4    360μs    0.0%  90.0μs    803KiB    0.3%   201KiB
+s2 extension        4    208ns    0.0%  52.0ns     0.00B    0.0%    0.00B
+─────────────────────────────────────────────────────────────────────────
+
+ |..................................do batched PT2......................................
+ thresh_foi    :1.0e-5
+ prescreen     :true
+ H0            :Hcmf
+ nbody         :4
+ Norms of input states:
+   1.00000000
+   1.00000000
+   1.00000000
+   1.00000000
+ Compute <0|H0|0>:                                   0.030672 seconds (194.58 k allocations: 4.812 MiB)
+ Compute <0|H|0>:                                    0.212406 seconds (5.00 M allocations: 109.284 MiB, 8.98% gc time)
+ Number of jobs:    171
+ Number of threads: 1
+   |----------------------------------------------------------------------------------------------------|
+   |0%                                                                                              100%|
+   |-------------------------------------------------------------------------------------|
+ Time spent computing E2          0.5 (s)
+  Root         E(0)         E(2)
+     1 -37.83040470 -37.83100605
+     2 -37.82994734 -37.83044979
+     3 -37.82868816 -37.82918247
+     4 -37.82682806 -37.82725841
+ ......................................................................................|
+
+ cipsi=1e-3  TPS=   752
+ cipsi=1e-3                            Root      Energy    <S²>
+                                          1  -37.830405   0.046
+                                          2  -37.829947   2.011
+                                          3  -37.828688   5.955
+                                          4  -37.826828  11.988
+ ci_vector     : (752, 4)
+ thresh_cipsi  : 0.0008
+ thresh_foi    : 1.0e-5
+ thresh_asci   : nothing
+ thresh_var    : nothing
+ thresh_spin   : nothing
+ max_iter      : 30
+ conv_thresh   : 0.0001
+ nbody         : 4
+ incremental   : true
+ ci_conv       : 1.0e-5
+ ci_max_iter   : 50
+ ci_max_ss_vecs: 12
+ ci_lindep_thresh: 1.0e-12
+ davidson      : false
+ max_mem_ci    : 20.0
+ threaded      : true
+
+
+ ===================================================================
+     Selected CI Iteration:    1 epsilon:   0.00080000
+ ===================================================================
+ Memory needed to hold full CI matrix:   0.00452403 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension =   752: 
+ Build full Hamiltonian matrix with dimension:       0.083232 seconds (2.77 M allocations: 70.528 MiB)
+ Now diagonalize
+ Diagonalization time:                               0.000324 seconds
+ Compute S2 expectation values:                      0.036949 seconds (668.71 k allocations: 15.200 MiB)
+  Root       Energy           S2
+     1 -37.83040470   0.04631218
+     2 -37.82994734   2.01131726
+     3 -37.82868816   5.95540668
+     4 -37.82682806  11.98794846
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+
+ Singular values of overlap:
+  0.000
+  0.000
+  0.000
+  0.000
+ Norm of new projection:
+   1.00000000
+   1.00000000
+   1.00000000
+   1.00000000
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000346 seconds (3.69 k allocations: 246.156 KiB)
+ Number of jobs:    171
+ Number of threads: 1
+ Compute matrix-vector:                              0.485437 seconds (964.61 k allocations: 31.363 MiB)
+ Now collect thread results :                        0.000021 seconds (356 allocations: 21.250 KiB)
+ Length of FOIS vector: 32403
+ Compute diagonal:                                   0.000212 seconds (1.03 k allocations: 344.500 KiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83040470 -37.83100605
+     2 -37.82994734 -37.83044979
+     3 -37.82868816 -37.82918247
+     4 -37.82682806 -37.82725841
+ Length of PT1  vector                             32403 →    171
+ TPSCI Iter 1   Dim: 752    E(var):  -37.83040470  -37.82994734  -37.82868816  -37.82682806 
+
+
+ ===================================================================
+     Selected CI Iteration:    2 epsilon:   0.00080000
+ ===================================================================
+ Add pt vector to current space                      752 →    923
+ Memory needed to hold full CI matrix:   0.00681543 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension =   923: 
+ Fill old/old Hamiltonian:                           0.000638 seconds (6 allocations: 12.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:    0.037590 seconds (1.17 M allocations: 27.106 MiB)
+ Build new/new Hamiltonian matrix with dimension:    0.005469 seconds (164.18 k allocations: 3.985 MiB)
+ Now diagonalize
+ Diagonalization time:                               0.003044 seconds
+ Compute S2 expectation values:                      0.048038 seconds (992.51 k allocations: 22.456 MiB)
+  Root       Energy           S2
+     1 -37.83070012   0.03257495
+     2 -37.83020853   2.00286485
+     3 -37.82888117   5.96829717
+     4 -37.82704689  11.99648161
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+ -1.000  0.000  0.014 -0.000
+  0.000  1.000 -0.000 -0.017
+  0.014  0.000  1.000  0.000
+ -0.000  0.017 -0.000  1.000
+
+ Singular values of overlap:
+  1.000
+  1.000
+  1.000
+  1.000
+ Norm of new projection:
+   0.01513749
+   0.01416525
+   0.01166900
+   0.01281057
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000341 seconds (3.69 k allocations: 246.156 KiB)
+ Number of jobs:    171
+ Number of threads: 1
+ Compute matrix-vector:                              0.248138 seconds (1.10 M allocations: 33.518 MiB)
+ Now collect thread results :                        0.000032 seconds (356 allocations: 21.250 KiB)
+ Length of FOIS vector: 33332
+ Compute diagonal:                                   0.000218 seconds (1.03 k allocations: 360.500 KiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83070012 -37.83113692
+     2 -37.83020853 -37.83056363
+     3 -37.82888117 -37.82926517
+     4 -37.82704689 -37.82736339
+ Length of PT1  vector                             33332 →     13
+ TPSCI Iter 2   Dim: 923    E(var):  -37.83070012  -37.83020853  -37.82888117  -37.82704689 
+
+
+ ===================================================================
+     Selected CI Iteration:    3 epsilon:   0.00080000
+ ===================================================================
+ Add pt vector to current space                      923 →    936
+ Memory needed to hold full CI matrix:   0.00700877 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension =   936: 
+ Fill old/old Hamiltonian:                           0.001518 seconds (6 allocations: 16.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:    0.004471 seconds (124.03 k allocations: 2.933 MiB)
+ Build new/new Hamiltonian matrix with dimension:    0.000105 seconds (2.99 k allocations: 69.125 KiB)
+ Now diagonalize
+ Diagonalization time:                               0.003193 seconds
+ Compute S2 expectation values:                      0.047966 seconds (1.02 M allocations: 23.010 MiB)
+  Root       Energy           S2
+     1 -37.83071231   0.02842342
+     2 -37.83021415   2.00234963
+     3 -37.82889437   5.97247142
+     4 -37.82706516  11.99700966
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+  1.000  0.000 -0.005 -0.000
+  0.000 -1.000  0.000  0.002
+  0.005  0.000  1.000  0.000
+ -0.000 -0.002  0.000 -1.000
+
+ Singular values of overlap:
+  1.000
+  1.000
+  1.000
+  1.000
+ Norm of new projection:
+   0.00331273
+   0.00270991
+   0.00310023
+   0.00357066
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000320 seconds (3.69 k allocations: 246.156 KiB)
+ Number of jobs:    171
+ Number of threads: 1
+ Compute matrix-vector:                              0.176733 seconds (1.10 M allocations: 32.384 MiB)
+ Now collect thread results :                        0.000022 seconds (356 allocations: 21.250 KiB)
+ Length of FOIS vector: 33354
+ Compute diagonal:                                   0.000216 seconds (1.03 k allocations: 360.500 KiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83071231 -37.83114201
+     2 -37.83021415 -37.83056500
+     3 -37.82889437 -37.82926972
+     4 -37.82706516 -37.82736998
+ Length of PT1  vector                             33354 →      0
+*TPSCI Iter 3   Dim: 936    E(var):  -37.83071231  -37.83021415  -37.82889437  -37.82706516 
+
+─────────────────────────────────────────────────────────────────────────
+                                Time                    Allocations      
+                       ───────────────────────   ────────────────────────
+   Tot / % measured:        1.35s /  89.7%            397MiB /  88.7%    
+
+Section        ncalls     time    %tot     avg     alloc    %tot      avg
+─────────────────────────────────────────────────────────────────────────
+matvec              3    913ms   75.7%   304ms    104MiB   29.5%  34.7MiB
+ci                  3    277ms   23.0%  92.3ms    195MiB   55.4%  65.1MiB
+copy                9   7.84ms    0.6%   871μs   26.2MiB    7.4%  2.91MiB
+sig rotate          3   5.52ms    0.5%  1.84ms   22.0MiB    6.2%  7.33MiB
+sig update          3   1.34ms    0.1%   448μs   1.16MiB    0.3%   396KiB
+project out         3    838μs    0.1%   279μs   1.71MiB    0.5%   583KiB
+diagonal            3    737μs    0.1%   246μs   1.05MiB    0.3%   357KiB
+vec rotate          3    395μs    0.0%   132μs    959KiB    0.3%   320KiB
+s2 extension        3   83.0ns    0.0%  27.7ns     0.00B    0.0%    0.00B
+─────────────────────────────────────────────────────────────────────────
+
+ |..................................do batched PT2......................................
+ thresh_foi    :1.0e-5
+ prescreen     :true
+ H0            :Hcmf
+ nbody         :4
+ Norms of input states:
+   1.00000000
+   1.00000000
+   1.00000000
+   1.00000000
+ Compute <0|H0|0>:                                   0.037933 seconds (290.67 k allocations: 7.078 MiB)
+ Compute <0|H|0>:                                    0.276137 seconds (7.67 M allocations: 167.603 MiB)
+ Number of jobs:    171
+ Number of threads: 1
+   |----------------------------------------------------------------------------------------------------|
+   |0%                                                                                              100%|
+   |-------------------------------------------------------------------------------------|
+ Time spent computing E2          0.6 (s)
+  Root         E(0)         E(2)
+     1 -37.83071231 -37.83114320
+     2 -37.83021415 -37.83056586
+     3 -37.82889437 -37.82926945
+     4 -37.82706516 -37.82736966
+ ......................................................................................|
+
+ cipsi=8e-4  TPS=   936
+ cipsi=8e-4                            Root      Energy    <S²>
+                                          1  -37.830712   0.028
+                                          2  -37.830214   2.002
+                                          3  -37.828894   5.972
+                                          4  -37.827065  11.997
+ ci_vector     : (936, 4)
+ thresh_cipsi  : 0.0006
+ thresh_foi    : 1.0e-5
+ thresh_asci   : nothing
+ thresh_var    : nothing
+ thresh_spin   : nothing
+ max_iter      : 30
+ conv_thresh   : 0.0001
+ nbody         : 4
+ incremental   : true
+ ci_conv       : 1.0e-5
+ ci_max_iter   : 50
+ ci_max_ss_vecs: 12
+ ci_lindep_thresh: 1.0e-12
+ davidson      : false
+ max_mem_ci    : 20.0
+ threaded      : true
+
+
+ ===================================================================
+     Selected CI Iteration:    1 epsilon:   0.00060000
+ ===================================================================
+ Memory needed to hold full CI matrix:   0.00700877 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension =   936: 
+ Build full Hamiltonian matrix with dimension:       0.129952 seconds (4.25 M allocations: 104.873 MiB)
+ Now diagonalize
+ Diagonalization time:                               0.000444 seconds
+ Compute S2 expectation values:                      0.049209 seconds (1.02 M allocations: 23.010 MiB)
+  Root       Energy           S2
+     1 -37.83071231   0.02842263
+     2 -37.83021415   2.00234964
+     3 -37.82889437   5.97247220
+     4 -37.82706516  11.99700965
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+  0.000  0.000  0.000  0.000
+
+ Singular values of overlap:
+  0.000
+  0.000
+  0.000
+  0.000
+ Norm of new projection:
+   1.00000000
+   1.00000000
+   1.00000000
+   1.00000000
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000315 seconds (3.69 k allocations: 246.156 KiB)
+ Number of jobs:    171
+ Number of threads: 1
+ Compute matrix-vector:                              0.605367 seconds (1.18 M allocations: 37.504 MiB, 3.57% gc time)
+ Now collect thread results :                        0.000023 seconds (356 allocations: 21.250 KiB)
+ Length of FOIS vector: 33372
+ Compute diagonal:                                   0.000230 seconds (1.03 k allocations: 360.500 KiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83071231 -37.83114320
+     2 -37.83021415 -37.83056586
+     3 -37.82889437 -37.82926945
+     4 -37.82706516 -37.82736966
+ Length of PT1  vector                             33372 →    235
+ TPSCI Iter 1   Dim: 936    E(var):  -37.83071231  -37.83021415  -37.82889437  -37.82706516 
+
+
+ ===================================================================
+     Selected CI Iteration:    2 epsilon:   0.00060000
+ ===================================================================
+ Add pt vector to current space                      936 →   1171
+ Memory needed to hold full CI matrix:   0.01096993 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension =  1171: 
+ Fill old/old Hamiltonian:                           0.001081 seconds (6 allocations: 16.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:    0.070561 seconds (2.26 M allocations: 52.052 MiB)
+ Build new/new Hamiltonian matrix with dimension:    0.011098 seconds (365.60 k allocations: 8.724 MiB)
+ Now diagonalize
+ Diagonalization time:                               0.005221 seconds
+ Compute S2 expectation values:                      0.063007 seconds (1.58 M allocations: 35.625 MiB)
+  Root       Energy           S2
+     1 -37.83093478   0.00695774
+     2 -37.83038091   2.00082696
+     3 -37.82911280   5.99325029
+     4 -37.82725713  11.99891175
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+ -0.999 -0.000 -0.035  0.000
+  0.000 -1.000  0.000  0.006
+ -0.035  0.000  0.999  0.000
+  0.000  0.006 -0.000  1.000
+
+ Singular values of overlap:
+  1.000
+  1.000
+  1.000
+  1.000
+ Norm of new projection:
+   0.01408740
+   0.01202174
+   0.01370009
+   0.01224456
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000321 seconds (3.69 k allocations: 246.156 KiB)
+ Number of jobs:    171
+ Number of threads: 1
+ Compute matrix-vector:                              0.314446 seconds (1.40 M allocations: 41.730 MiB)
+ Now collect thread results :                        0.000026 seconds (356 allocations: 21.250 KiB)
+ Length of FOIS vector: 34507
+ Compute diagonal:                                   0.000228 seconds (1.03 k allocations: 360.500 KiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83093478 -37.83125344
+     2 -37.83038091 -37.83064520
+     3 -37.82911280 -37.82937077
+     4 -37.82725713 -37.82746233
+ Length of PT1  vector                             34507 →     10
+ TPSCI Iter 2   Dim: 1171   E(var):  -37.83093478  -37.83038091  -37.82911280  -37.82725713 
+
+
+ ===================================================================
+     Selected CI Iteration:    3 epsilon:   0.00060000
+ ===================================================================
+ Add pt vector to current space                     1171 →   1181
+ Memory needed to hold full CI matrix:   0.01115809 (Gb) Max allowed:  20.00000000 (Gb)
+
+ |== Tensor Product State CI =======================================
+ Hamiltonian matrix dimension =  1181: 
+ Fill old/old Hamiltonian:                           0.002835 seconds (6 allocations: 20.125 KiB)
+ Build old/new Hamiltonian matrix with dimension:    0.004761 seconds (130.75 k allocations: 3.101 MiB)
+ Build new/new Hamiltonian matrix with dimension:    0.000103 seconds (2.35 k allocations: 54.469 KiB)
+ Now diagonalize
+ Diagonalization time:                               0.003810 seconds
+ Compute S2 expectation values:                      0.065956 seconds (1.59 M allocations: 35.925 MiB)
+  Root       Energy           S2
+     1 -37.83093793   0.00716318
+     2 -37.83038442   2.00082351
+     3 -37.82911411   5.99305071
+     4 -37.82725804  11.99892784
+ ==================================================================|
+ Overlap between old and new eigenvectors:
+ -1.000 -0.000  0.000  0.000
+ -0.000  1.000 -0.000 -0.000
+ -0.000 -0.000 -1.000 -0.000
+  0.000  0.000 -0.000  1.000
+
+ Singular values of overlap:
+  1.000
+  1.000
+  1.000
+  1.000
+ Norm of new projection:
+   0.00232221
+   0.00244551
+   0.00155751
+   0.00133246
+
+ In open_matvec_thread
+ Setup threaded jobs:                                0.000326 seconds (3.69 k allocations: 246.156 KiB)
+ Number of jobs:    171
+ Number of threads: 1
+ Compute matrix-vector:                              0.224329 seconds (1.39 M allocations: 40.339 MiB)
+ Now collect thread results :                        0.000026 seconds (356 allocations: 21.250 KiB)
+ Length of FOIS vector: 34571
+ Compute diagonal:                                   0.000227 seconds (1.03 k allocations: 360.500 KiB)
+
+
+  Root         E(0)         E(2)
+     1 -37.83093793 -37.83125467
+     2 -37.83038442 -37.83064673
+     3 -37.82911411 -37.82937129
+     4 -37.82725804 -37.82746254
+ Length of PT1  vector                             34571 →      2
+*TPSCI Iter 3   Dim: 1181   E(var):  -37.83093793  -37.83038442  -37.82911411  -37.82725804 
+
+─────────────────────────────────────────────────────────────────────────
+                                Time                    Allocations      
+                       ───────────────────────   ────────────────────────
+   Tot / % measured:        1.72s /  91.5%            542MiB /  89.8%    
+
+Section        ncalls     time    %tot     avg     alloc    %tot      avg
+─────────────────────────────────────────────────────────────────────────
+matvec              3    1.15s   72.7%   382ms    126MiB   25.9%  42.1MiB
+ci                  3    414ms   26.2%   138ms    306MiB   62.7%   102MiB
+copy                9   8.23ms    0.5%   915μs   27.2MiB    5.6%  3.02MiB
+sig rotate          3   5.69ms    0.4%  1.90ms   22.9MiB    4.7%  7.63MiB
+sig update          3   1.34ms    0.1%   447μs   1.21MiB    0.2%   414KiB
+project out         3    894μs    0.1%   298μs   1.78MiB    0.4%   606KiB
+diagonal            3    783μs    0.0%   261μs   1.06MiB    0.2%   363KiB
+vec rotate          3    505μs    0.0%   168μs   1.16MiB    0.2%   395KiB
+s2 extension        3   42.0ns    0.0%  14.0ns     0.00B    0.0%    0.00B
+─────────────────────────────────────────────────────────────────────────
+
+ |..................................do batched PT2......................................
+ thresh_foi    :1.0e-5
+ prescreen     :true
+ H0            :Hcmf
+ nbody         :4
+ Norms of input states:
+   1.00000000
+   1.00000000
+   1.00000000
+   1.00000000
+ Compute <0|H0|0>:                                   0.048496 seconds (447.12 k allocations: 10.745 MiB)
+ Compute <0|H|0>:                                    0.491994 seconds (12.76 M allocations: 278.919 MiB, 4.55% gc time)
+ Number of jobs:    171
+ Number of threads: 1
+   |----------------------------------------------------------------------------------------------------|
+   |0%                                                                                              100%|
+   |-------------------------------------------------------------------------------------|
+ Time spent computing E2          0.7 (s)
+  Root         E(0)         E(2)
+     1 -37.83093793 -37.83125548
+     2 -37.83038442 -37.83064700
+     3 -37.82911411 -37.82937174
+     4 -37.82725804 -37.82746226
+ ......................................................................................|
+
+ cipsi=6e-4  TPS=  1181
+ cipsi=6e-4                            Root      Energy    <S²>
+                                          1  -37.830938   0.007
+                                          2  -37.830384   2.001
+                                          3  -37.829114   5.993
+                                          4  -37.827258  11.999
+
+ thresh       Root          E(var)           E+PT2
+ 1e-3            1    -37.83040470    -37.83100605
+ 1e-3            2    -37.82994734    -37.83044979
+ 1e-3            3    -37.82868816    -37.82918247
+ 1e-3            4    -37.82682806    -37.82725841
+ 8e-4            1    -37.83071231    -37.83114320
+ 8e-4            2    -37.83021415    -37.83056586
+ 8e-4            3    -37.82889437    -37.82926945
+ 8e-4            4    -37.82706516    -37.82736966
+ 6e-4            1    -37.83093793    -37.83125548
+ 6e-4            2    -37.83038442    -37.83064700
+ 6e-4            3    -37.82911411    -37.82937174
+ 6e-4            4    -37.82725804    -37.82746226
+
+══════════════════════════════════════════════════════════════════════════════════════════
+ Summary — Root 1 (cipsi=6e-4)
+══════════════════════════════════════════════════════════════════════════════════════════
+ EST spinbasis per_sector thresh=1e-4          loc=1018,64,1023  TPS=16147  E=   -37.83729417  E+PT2=   -37.83860658
+ Spin eigenbasis M=30                          loc=414,42,414  TPS= 1181  E=   -37.83093793  E+PT2=   -37.83125548
