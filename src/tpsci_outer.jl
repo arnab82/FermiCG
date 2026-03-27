@@ -1,6 +1,8 @@
 using TimerOutputs
 using BlockDavidson
 using BenchmarkTools
+using Krylov
+using LinearOperators
 
 """
     build_full_H(ci_vector::TPSCIstate, cluster_ops, clustered_ham::ClusteredOperator)
@@ -1169,6 +1171,7 @@ function do_fois_cepa(ref::TPSCIstate{T,N,R}, cluster_ops, clustered_ham;
                         tol=1e-8,
                         compress=false,
                         compress_type="matvec",
+                        solver=:krylovkit,
                         verbose=1) where {T,N,R}
     @printf("\n-------------------------------------------------------\n")
     @printf(" Do CEPA\n")
@@ -1217,7 +1220,7 @@ function do_fois_cepa(ref::TPSCIstate{T,N,R}, cluster_ops, clustered_ham;
     println()
     println(" Do CEPA: shared FOIS dim = ", length(pt1_vec))
     @time Ec, e_cepa = tpsci_cepa_solve(ref_vec, e0, pt1_vec, cluster_ops, clustered_ham,
-                                         cepa_shift, cepa_mit, tol=tol, verbose=verbose)
+                                         cepa_shift, cepa_mit, tol=tol,solver=solver, verbose=verbose)
 
     for i in 1:R
         @printf(" E(cepa) root %i  corr= %12.8f  total= %12.8f\n", i, Ec[i], e_cepa[i])
@@ -1259,6 +1262,7 @@ function tpsci_cepa_solve(ref_vector::TPSCIstate{T,N,R}, e0::Vector,
                            tol=1e-5,
                            cg_maxiter=300,
                            nbody=4,
+                           solver=:krylovkit,
                            verbose=0) where {T,N,R,R2}
 
     n_clusters = length(ref_vector.clusters)
@@ -1286,6 +1290,11 @@ function tpsci_cepa_solve(ref_vector::TPSCIstate{T,N,R}, e0::Vector,
     # Each root requires one open_matvec call (cheap: P-space only).
     h = zeros(T, dim_q, R)
     for i in 1:R
+        if verbose > 0
+            println()
+            println(" Compute sigma for root ", i)
+            println()
+        end
         ref_i = extract_chosen_root(ref_vector, i)
         sig_i = open_matvec_thread(ref_i, cluster_ops, clustered_ham,
                                    nbody=nbody, thresh=0.0)
@@ -1305,6 +1314,12 @@ function tpsci_cepa_solve(ref_vector::TPSCIstate{T,N,R}, e0::Vector,
     Ec_prev = fill(T(Inf), R)
 
     for it in 1:cepa_mit
+        if verbose > 0
+            println("__________________________________________________________")
+            println()
+            @printf(" CEPA Iteration %3i\n", it)
+            println("__________________________________________________________")
+        end
         shifts = zeros(T, R)
         for i in 1:R
             if     cepa_shift == "cepa";  shifts[i] = zero(T)
@@ -1319,16 +1334,49 @@ function tpsci_cepa_solve(ref_vector::TPSCIstate{T,N,R}, e0::Vector,
 
         # Solve (H_xx - eshift*I) * Cd = -h[I]  for each root via KrylovKit linsolve
         for i in 1:R
+            if verbose > 0
+                println()
+                @printf(" Solve for root %i with shift = %12.8f\n", i, shifts[i])
+            end
             eshift = e0[i] + shifts[i]
-            Afunc = v -> Hq_matvec(v) .- eshift .* v
-            Cd_i, info = KrylovKit.linsolve(Afunc, -h[:, i];
-                                            tol=tol, maxiter=cg_maxiter,
-                                            issymmetric=true, isposdef=true,
-                                            verbosity=0)
+            Afunc  = v -> Hq_matvec(v) .- eshift .* v
+        
+            if solver == :krylovkit
+                # ── KrylovKit CG ─────────────────────────────────────────────
+                # WARNING: isposdef=true is only valid if eshift < λ_min(H_Q).
+                # If the shift does not make Q H Q - eshift·I positive definite,
+                # CG can silently return a wrong answer.
+                Cd_i, info = KrylovKit.linsolve(Afunc, -h[:, i];
+                                                tol        = tol,
+                                                maxiter    = cg_maxiter,
+                                                issymmetric = true,
+                                                isposdef   = true,
+                                                verbosity  = verbose)
+                numops   = info.numops
+                convflag = info.converged == 1
+        
+            elseif solver == :minres
+                n    = length(h[:, i])
+                A_op = LinearOperator(Float64, n, n, true, true,
+                                      (y, v) -> (y .= Afunc(v)))
+                Cd_i, stats = Krylov.minres(A_op, -h[:, i];
+                                            atol  = tol,
+                                            rtol  = tol,
+                                            itmax = cg_maxiter)
+                numops   = stats.niter
+                convflag = stats.solved
+        
+            else
+                error("Unknown solver: $solver. Choose :krylovkit or :minres")
+            end
+            if !convflag && verbose > 0
+                @warn " Root $i did not converge (solver=:$solver)"
+            end
+            Ec[i] = dot(Cd_i, h[:, i])
             Ec[i] = dot(Cd_i, h[:, i])
             if verbose > 0
                 @printf(" Iter %3i  Root %i  nops=%4i  E_corr = %16.12f\n",
-                        it, i, info.numops, Ec[i])
+                        it, i, numops, Ec[i])  
             end
         end
 
