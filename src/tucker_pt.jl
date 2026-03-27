@@ -1,4 +1,4 @@
-
+using IterativeSolvers
 
  """
     hylleraas_compressed_mp2a(sig_in::BSTstate{T,N,R}, ref::BSTstate{T,N,R}, cluster_ops, clustered_ham;
@@ -495,7 +495,7 @@ function hylleraas_compressed_mp2(sig_in::BSTstate{T,N,R}, ref::BSTstate{T,N,R},
         x_vector = zeros(T, dim)
         # x_vector = get_vector(Sx)[:,r] + get_vector(sig)[:, r] * 0.1
         # x_vector = get_vector(sig)[:, r] * 0.1
-        time = @elapsed alloc = @allocated x, solver = cg!(x_vector, Axx, br, log=true, maxiter=max_iter, verbose=true, abstol=tol)
+        time = @elapsed alloc = @allocated x, solver = IterativeSolvers.cg!(x_vector, Axx, br, log=true, maxiter=max_iter, verbose=true, abstol=tol)
         verbose < 1 || @printf(" %-50s%10.6f seconds %10.2e Gb\n", "Time to solve for PT1 with conjugate gradient: ", time, alloc/1e9)
 
         set_vector!(psi1, x_vector, root=r)
