@@ -1,8 +1,6 @@
 using TimerOutputs
 using BlockDavidson
 using BenchmarkTools
-using Krylov
-using LinearOperators
 
 """
     build_full_H(ci_vector::TPSCIstate, cluster_ops, clustered_ham::ClusteredOperator)
@@ -148,6 +146,144 @@ function build_full_H_parallel( ci_vector_l::TPSCIstate{T,N,R}, ci_vector_r::TPS
 
 
     return H
+end
+#=}}}=#
+
+
+"""
+    build_H_qq(ci_vector::TPSCIstate, cluster_ops, clustered_ham)
+
+Build the symmetric dim_q×dim_q Hamiltonian matrix for the Q-space defined by `ci_vector`.
+
+Unlike `build_full_H_parallel`, each thread writes directly into its own row of H via a
+view (no per-job scratch copy), halving peak memory from 2×dim_q²×8 B to 1×dim_q²×8 B.
+Safe because each job owns a unique bra_idx row — no data race.
+"""
+function build_H_qq(ci_vector::TPSCIstate{T,N,R}, cluster_ops,
+                    clustered_ham::ClusteredOperator) where {T,N,R}
+#={{{=#
+    dim = length(ci_vector)
+    H = zeros(T, dim, dim)
+
+    jobs = Vector{Tuple{Int, FockConfig{N}, ClusterConfig{N}}}()
+    bra_idx = 0
+    for (fock_bra, configs_bra) in ci_vector.data
+        for (config_bra, _) in configs_bra
+            bra_idx += 1
+            push!(jobs, (bra_idx, fock_bra, config_bra))
+        end
+    end
+
+    function do_job(job)
+        fock_bra  = job[2]
+        config_bra = job[3]
+        Hrow = view(H, job[1], :)   # direct view — unique row, no race
+        ket_idx = 0
+
+        for (fock_ket, configs_ket) in ci_vector.data
+            fock_trans = fock_bra - fock_ket
+            if haskey(clustered_ham, fock_trans) == false
+                ket_idx += length(configs_ket)
+                continue
+            end
+            for (config_ket, _) in configs_ket
+                ket_idx += 1
+                ket_idx <= job[1] || continue   # lower triangle only
+
+                for term in clustered_ham[fock_trans]
+                    check_term(term, fock_bra, config_bra, fock_ket, config_ket) || continue
+                    me = contract_matrix_element(term, cluster_ops, fock_bra, config_bra,
+                                                 fock_ket, config_ket)
+                    Hrow[ket_idx] += me
+                end
+            end
+        end
+    end
+
+    Threads.@threads for job in jobs
+        do_job(job)
+    end
+
+    # fill upper triangle
+    for i in 1:dim
+        @simd for j in i+1:dim
+            @inbounds H[i,j] = H[j,i]
+        end
+    end
+
+    return H
+end
+#=}}}=#
+
+
+"""
+    build_H_qq_sparse(ci_vector::TPSCIstate, cluster_ops, clustered_ham)
+
+Build a sparse symmetric dim_q×dim_q Hamiltonian for the Q-space defined by `ci_vector`.
+
+Each thread accumulates its own (I,J,V) triplet lists (no shared state, no locks), then
+the full set is merged and passed to `sparse()`.  Peak memory is O(nnz) rather than
+O(dim_q²), making this viable for dim_q >> 160K where the dense builders OOM.
+"""
+function build_H_qq_sparse(ci_vector::TPSCIstate{T,N,R}, cluster_ops,
+                            clustered_ham::ClusteredOperator) where {T,N,R}
+#={{{=#
+    dim = length(ci_vector)
+    nt  = Threads.nthreads()
+
+    jobs = Vector{Tuple{Int, FockConfig{N}, ClusterConfig{N}}}()
+    bra_idx = 0
+    for (fock_bra, configs_bra) in ci_vector.data
+        for (config_bra, _) in configs_bra
+            bra_idx += 1
+            push!(jobs, (bra_idx, fock_bra, config_bra))
+        end
+    end
+
+    # Per-thread COO accumulators — no shared writes, no locks needed
+    Is = [Vector{Int}()   for _ in 1:nt]
+    Js = [Vector{Int}()   for _ in 1:nt]
+    Vs = [Vector{T}()     for _ in 1:nt]
+
+    Threads.@threads for job in jobs
+        tid       = Threads.threadid()
+        bra_idx_j = job[1]
+        fock_bra  = job[2]
+        config_bra = job[3]
+        ket_idx   = 0
+
+        for (fock_ket, configs_ket) in ci_vector.data
+            fock_trans = fock_bra - fock_ket
+            if !haskey(clustered_ham, fock_trans)
+                ket_idx += length(configs_ket)
+                continue
+            end
+
+            for (config_ket, _) in configs_ket
+                ket_idx += 1
+                ket_idx <= bra_idx_j || continue   # lower triangle only
+
+                me = zero(T)
+                for term in clustered_ham[fock_trans]
+                    check_term(term, fock_bra, config_bra, fock_ket, config_ket) || continue
+                    me += contract_matrix_element(term, cluster_ops, fock_bra, config_bra,
+                                                  fock_ket, config_ket)
+                end
+
+                iszero(me) && continue
+
+                push!(Is[tid], bra_idx_j); push!(Js[tid], ket_idx); push!(Vs[tid], me)
+                if bra_idx_j != ket_idx   # off-diagonal: store transpose too
+                    push!(Is[tid], ket_idx); push!(Js[tid], bra_idx_j); push!(Vs[tid], me)
+                end
+            end
+        end
+    end
+
+    I_all = vcat(Is...)
+    J_all = vcat(Js...)
+    V_all = vcat(Vs...)
+    return sparse(I_all, J_all, V_all, dim, dim)
 end
 #=}}}=#
 
@@ -1158,9 +1294,68 @@ Do CEPA in FOIS defined by ref and thresh_foi
     -`tol`: tolerance for convergence
     -`compress`: compress the first order interaction space
     -`compress_type`: type of compression
+    -`solver`: `:krylov` (default, matrix-free CG via open_matvec_thread) or
+               `:minres` (builds H_qq once as a dense matrix, then uses MINRES;
+               drastically reduces peak memory for large FOIS)
     -`verbose`: verbosity level
 
 """
+
+"""
+    compare_hqq_builders(ref, cluster_ops, clustered_ham; thresh_foi, nbody, verbose)
+
+Build the CEPA Q-space from `ref` at `thresh_foi`, then construct H_qq with both
+`build_H_qq` (dense) and `build_H_qq_sparse` (sparse) and compare them.
+Prints a report and returns `(H_dense, H_sparse)`.
+Used to verify the sparse builder before using it in production.
+"""
+function compare_hqq_builders(ref::TPSCIstate{T,N,R}, cluster_ops, clustered_ham;
+                                thresh_foi=1e-3, nbody=4, verbose=1) where {T,N,R}
+#={{{=#
+    ref_vec = deepcopy(ref)
+    e0, ref_vec = tps_ci_direct(ref_vec, cluster_ops, clustered_ham, conv_thresh=1e-8)
+
+    pt1_vec = deepcopy(ref_vec)
+    pt1_vec = open_matvec_thread(pt1_vec, cluster_ops, clustered_ham,
+                                 nbody=nbody, thresh=thresh_foi)
+    project_out!(pt1_vec, ref)
+
+    dim_q = length(pt1_vec)
+    @printf(" FOIS dim_q = %i\n", dim_q)
+
+    q1 = TPSCIstate(pt1_vec, R=1)
+
+    verbose > 0 && println(" Building H_qq dense  ...")
+    GC.gc(); td = @timed build_H_qq(q1, cluster_ops, clustered_ham)
+    H_dense = td.value
+
+    verbose > 0 && println(" Building H_qq sparse ...")
+    GC.gc(); ts = @timed build_H_qq_sparse(q1, cluster_ops, clustered_ham)
+    H_sparse = ts.value
+
+    diff_norm = norm(H_dense - Matrix(H_sparse))
+    sym_err   = norm(H_sparse - H_sparse')
+    fill_pct  = 100.0 * nnz(H_sparse) / dim_q^2
+
+    println()
+    println("─"^70)
+    println(" H_qq builder comparison")
+    println("─"^70)
+    @printf(" dim_q                   = %i\n",    dim_q)
+    @printf(" Dense  alloc / time     = %.2f MiB / %.2f s\n", td.bytes/2^20, td.time)
+    @printf(" Sparse alloc / time     = %.2f MiB / %.2f s\n", ts.bytes/2^20, ts.time)
+    @printf(" nnz(sparse)             = %i  (%.3f%% fill)\n", nnz(H_sparse), fill_pct)
+    @printf(" Dense  stored mem       = %.2f MiB\n", sizeof(H_dense)/2^20)
+    @printf(" Sparse stored mem (CSC) = %.2f MiB\n",
+            (nnz(H_sparse)*8 + (dim_q+1)*8)/2^20)
+    @printf(" norm(dense - sparse)    = %.2e   ← correctness\n", diff_norm)
+    @printf(" norm(sparse - sparse')  = %.2e   ← symmetry\n",   sym_err)
+    println("─"^70)
+
+    return H_dense, H_sparse
+end
+#=}}}=#
+
 
 function do_fois_cepa(ref::TPSCIstate{T,N,R}, cluster_ops, clustered_ham;
                         cepa_shift="cepa",
@@ -1171,7 +1366,8 @@ function do_fois_cepa(ref::TPSCIstate{T,N,R}, cluster_ops, clustered_ham;
                         tol=1e-8,
                         compress=false,
                         compress_type="matvec",
-                        solver=:krylovkit,
+                        solver=:krylov,
+                        build_hqq=:direct,
                         verbose=1) where {T,N,R}
     @printf("\n-------------------------------------------------------\n")
     @printf(" Do CEPA\n")
@@ -1220,7 +1416,8 @@ function do_fois_cepa(ref::TPSCIstate{T,N,R}, cluster_ops, clustered_ham;
     println()
     println(" Do CEPA: shared FOIS dim = ", length(pt1_vec))
     @time Ec, e_cepa = tpsci_cepa_solve(ref_vec, e0, pt1_vec, cluster_ops, clustered_ham,
-                                         cepa_shift, cepa_mit, tol=tol,solver=solver, verbose=verbose)
+                                         cepa_shift, cepa_mit, tol=tol, solver=solver,
+                                         build_hqq=build_hqq, verbose=verbose)
 
     for i in 1:R
         @printf(" E(cepa) root %i  corr= %12.8f  total= %12.8f\n", i, Ec[i], e_cepa[i])
@@ -1262,7 +1459,8 @@ function tpsci_cepa_solve(ref_vector::TPSCIstate{T,N,R}, e0::Vector,
                            tol=1e-5,
                            cg_maxiter=300,
                            nbody=4,
-                           solver=:krylovkit,
+                           solver=:krylov,
+                           build_hqq=:direct,
                            verbose=0) where {T,N,R,R2}
 
     n_clusters = length(ref_vector.clusters)
@@ -1290,36 +1488,48 @@ function tpsci_cepa_solve(ref_vector::TPSCIstate{T,N,R}, e0::Vector,
     # Each root requires one open_matvec call (cheap: P-space only).
     h = zeros(T, dim_q, R)
     for i in 1:R
-        if verbose > 0
-            println()
-            println(" Compute sigma for root ", i)
-            println()
-        end
         ref_i = extract_chosen_root(ref_vector, i)
         sig_i = open_matvec_thread(ref_i, cluster_ops, clustered_ham,
                                    nbody=nbody, thresh=0.0)
         h[:, i] = project_to_Q(sig_i, 1)
     end
 
-    # ── Matrix-free H_xx*v via open_matvec_thread + projection to Q ────────────
+    # ── Build or wrap the Q-space matvec ─────────────────────────────────────────
     cepa_work = TPSCIstate(cepa_vector, R=1)   # reusable 1-root Q-space state
-    function Hq_matvec(v::Vector{T})
-        set_vector!(cepa_work, v, root=1)
-        sig = open_matvec_thread(cepa_work, cluster_ops, clustered_ham,
-                                 nbody=nbody, thresh=0.0)
-        return project_to_Q(sig, 1)
+
+    if solver == :minres
+        # Build H_qq once as a dense dim_q×dim_q matrix.
+        # This costs ~dim_q² × 8 bytes (e.g. 2.3 GB for dim_q=17093) stored once,
+        # replacing per-iteration open_matvec_thread calls that each allocate ~180 GiB.
+        @printf(" Building H_qq (%i × %i) [build_hqq=%s] — stored once for all MINRES solves\n",
+                dim_q, dim_q, build_hqq)
+        if build_hqq == :sparse
+            # Peak memory: O(nnz) — per-thread COO triplets, no dim_q² allocation
+            @time H_qq = build_H_qq_sparse(cepa_work, cluster_ops, clustered_ham)
+            @printf(" H_qq sparsity: nnz=%i  (%.2f%% fill)\n",
+                    nnz(H_qq), 100*nnz(H_qq)/dim_q^2)
+        elseif build_hqq == :direct
+            # Peak memory: 1×dim_q²×8 B — threads write directly into H rows (no scratch copies)
+            @time H_qq = build_H_qq(cepa_work, cluster_ops, clustered_ham)
+        else
+            # build_hqq == :parallel — uses build_full_H_parallel (peak 2×dim_q²×8 B due to scratch)
+            @time H_qq = build_full_H_parallel(cepa_work, cepa_work, cluster_ops, clustered_ham, sym=true)
+        end
+        Hq_mv = v -> H_qq * v
+    else
+        function Hq_matvec(v::Vector{T})
+            set_vector!(cepa_work, v, root=1)
+            sig = open_matvec_thread(cepa_work, cluster_ops, clustered_ham,
+                                     nbody=nbody, thresh=0.0)
+            return project_to_Q(sig, 1)
+        end
+        Hq_mv = Hq_matvec
     end
 
     Ec      = zeros(T, R)
     Ec_prev = fill(T(Inf), R)
 
     for it in 1:cepa_mit
-        if verbose > 0
-            println("__________________________________________________________")
-            println()
-            @printf(" CEPA Iteration %3i\n", it)
-            println("__________________________________________________________")
-        end
         shifts = zeros(T, R)
         for i in 1:R
             if     cepa_shift == "cepa";  shifts[i] = zero(T)
@@ -1332,52 +1542,32 @@ function tpsci_cepa_solve(ref_vector::TPSCIstate{T,N,R}, e0::Vector,
             end
         end
 
-        # Solve (H_xx - eshift*I) * Cd = -h[I]  for each root via KrylovKit linsolve
+        # Solve (H_xx - eshift*I) * Cd = -h[I] for each root
         for i in 1:R
-            if verbose > 0
-                println()
-                @printf(" Solve for root %i with shift = %12.8f\n", i, shifts[i])
-            end
+            @printf(" CEPA Iter %3i  Root %i  Shift = %12.8f\n", it, i, shifts[i])
             eshift = e0[i] + shifts[i]
-            Afunc  = v -> Hq_matvec(v) .- eshift .* v
-        
-            if solver == :krylovkit
-                # ── KrylovKit CG ─────────────────────────────────────────────
-                # WARNING: isposdef=true is only valid if eshift < λ_min(H_Q).
-                # If the shift does not make Q H Q - eshift·I positive definite,
-                # CG can silently return a wrong answer.
-                Cd_i, info = KrylovKit.linsolve(Afunc, -h[:, i];
-                                                tol        = tol,
-                                                maxiter    = cg_maxiter,
-                                                issymmetric = true,
-                                                isposdef   = true,
-                                                verbosity  = verbose)
-                numops   = info.numops
-                convflag = info.converged == 1
-        
-            elseif solver == :minres
-                n    = length(h[:, i])
-                A_op = LinearOperator(Float64, n, n, true, true,
-                                      (y, v) -> (y .= Afunc(v)))
-                Cd_i, stats = Krylov.minres(A_op, -h[:, i];
-                                            atol  = tol,
-                                            rtol  = tol,
-                                            itmax = cg_maxiter)
-                numops   = stats.niter
-                convflag = stats.solved
-        
+            if solver == :minres
+                # MINRES handles symmetric indefinite (H_qq - eI can be indefinite)
+                H_eff = LinearMap{T}(v -> Hq_mv(v) .- eshift .* v, dim_q; issymmetric=true)
+                Cd_i, history = IterativeSolvers.minres(H_eff, -h[:, i];
+                                                        reltol=tol, maxiter=cg_maxiter,
+                                                        log=true)
+                if verbose > 0
+                    @printf(" Iter %3i  Root %i  nops=%4i  res=%8.2e  E_corr = %16.12f\n",
+                            it, i, history.iters, history.data[:resnorm][end], dot(Cd_i, h[:, i]))
+                end
             else
-                error("Unknown solver: $solver. Choose :krylovkit or :minres")
-            end
-            if !convflag && verbose > 0
-                @warn " Root $i did not converge (solver=:$solver)"
+                Afunc = v -> Hq_mv(v) .- eshift .* v
+                Cd_i, info = KrylovKit.linsolve(Afunc, -h[:, i];
+                                                tol=tol, maxiter=cg_maxiter,
+                                                issymmetric=true, isposdef=true,
+                                                verbosity=0)
+                if verbose > 0
+                    @printf(" Iter %3i  Root %i  nops=%4i  E_corr = %16.12f\n",
+                            it, i, info.numops, dot(Cd_i, h[:, i]))
+                end
             end
             Ec[i] = dot(Cd_i, h[:, i])
-            Ec[i] = dot(Cd_i, h[:, i])
-            if verbose > 0
-                @printf(" Iter %3i  Root %i  nops=%4i  E_corr = %16.12f\n",
-                        it, i, numops, Ec[i])  
-            end
         end
 
         cepa_shift == "cepa" && break
@@ -1387,5 +1577,3 @@ function tpsci_cepa_solve(ref_vector::TPSCIstate{T,N,R}, e0::Vector,
 
     return Ec, e0 .+ Ec
 end
-
-

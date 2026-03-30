@@ -19,4 +19,3 @@ Random.seed!(1234567)
     include("test_qdpt.jl")
     include("test_variance.jl")
 end
-
