@@ -1,5 +1,8 @@
 using FermiCG
-
+using LinearAlgebra
+using Printf
+using NPZ
+using SparseArrays
 """
     compare_hqq_builders(ref, cluster_ops, clustered_ham; thresh_foi, nbody, verbose)
 
@@ -17,7 +20,7 @@ function compare_hqq_builders(ref::TPSCIstate{T,N,R}, cluster_ops, clustered_ham
     pt1_vec = deepcopy(ref_vec)
     pt1_vec = FermiCG.open_matvec_thread(pt1_vec, cluster_ops, clustered_ham,
                                  nbody=nbody, thresh=thresh_foi)
-    project_out!(pt1_vec, ref)
+    FermiCG.project_out!(pt1_vec, ref)
 
     dim_q = length(pt1_vec)
     @printf(" FOIS dim_q = %i\n", dim_q)
@@ -32,8 +35,8 @@ function compare_hqq_builders(ref::TPSCIstate{T,N,R}, cluster_ops, clustered_ham
     GC.gc(); ts = @timed FermiCG.build_H_qq_sparse(q1, cluster_ops, clustered_ham)
     H_sparse = ts.value
 
-    diff_norm = norm(H_dense - Matrix(H_sparse))
-    sym_err   = norm(H_sparse - H_sparse')
+    diff_norm = LinearAlgebra.norm(H_dense - Matrix(H_sparse))
+    sym_err   = LinearAlgebra.norm(H_sparse - H_sparse')
     fill_pct  = 100.0 * nnz(H_sparse) / dim_q^2
 
     println()

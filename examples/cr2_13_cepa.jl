@@ -3,19 +3,21 @@ using RDM
 using FermiCG
 using Printf
 using JLD2
+
+
 include("compare_hqq.jl")
 @load "../test/data_cmf_13_cr2_morokuma.jld2"
 
 ref_fock = FockConfig([(3,0),(3,3),(0,3)])
 nroots   = 4
-
+M        = 100
 clustered_ham = FermiCG.extract_ClusteredTerms(ints, clusters)
 clustered_S2  = FermiCG.extract_S2(clusters)
 
-# ── Spin eigenbasis M=30 ───────────────────────────────────────────────────────
-println("\n Building Spin eigenbasis M=50 ...")
+# ── Spin eigenbasis M=100 ──────────────────────────────────────────────────────
+println("\n Building Spin eigenbasis M=100 ...")
 @time cb_spin = FermiCG.compute_cluster_eigenbasis_spin(ints, clusters, d1,
-                [3,3,3], ref_fock, max_roots=40, verbose=0)
+                [3,3,3], ref_fock, max_roots=M, verbose=0)
 
 cluster_ops = FermiCG.compute_cluster_ops(cb_spin, ints)
 FermiCG.add_cmf_operators!(cluster_ops, cb_spin, ints, d1.a, d1.b)
@@ -23,104 +25,85 @@ FermiCG.add_cmf_operators!(cluster_ops, cb_spin, ints, d1.a, d1.b)
 lbs = [sum(size(sol.vectors,2) for (_,sol) in cb.basis) for cb in cb_spin]
 @printf(" Local basis sizes: %s\n", join(lbs, ", "))
 
-# ── TPSCI reference ────────────────────────────────────────────────────────────
+# ── CMF reference ──────────────────────────────────────────────────────────────
 ci_vector = FermiCG.TPSCIstate(clusters, ref_fock, R=nroots)
 ci_vector = FermiCG.add_spin_focksectors(ci_vector)
 
-println("\n Running TPSCI (cipsi=6e-4) ...")
-e_tpsci, v_tpsci = FermiCG.tpsci_ci(ci_vector, cluster_ops, clustered_ham,
-                                      thresh_cipsi=6e-4, max_iter=30, thresh_foi=1e-5)
+thresh_foi_cepa = 1e-5
+W = 90
 
-s2_tpsci = FermiCG.compute_expectation_value_parallel(v_tpsci, cluster_ops, clustered_S2)
-@printf("\n TPSCI  TPS=%6i\n", length(v_tpsci))
-@printf(" %-5s  %14s  %6s\n", "Root", "E(var)", "<S²>")
-for r in 1:nroots
-    @printf(" %5i  %14.8f  %6.3f\n", r, e_tpsci[r], s2_tpsci[r])
-end
-
-ept2 = FermiCG.compute_pt2_energy(v_tpsci, cluster_ops, clustered_ham, thresh_foi=1e-5)
-@printf("\n TPSCI+PT2:\n")
-for r in 1:nroots
-    @printf(" %5i  %14.8f\n", r, e_tpsci[r]+ept2[r])
-end
-
-W = 85
-thresh_foi_cepa = 1e-6
-
-# ── H_qq matrix correctness check: dense vs sparse ────────────────────────────
-println("\n Comparing H_qq builders (dense vs sparse) at thresh_foi=$thresh_foi_cepa ...")
-FermiCG.compare_hqq_builders(ci_vector, cluster_ops, clustered_ham,
-                               thresh_foi=thresh_foi_cepa, nbody=4)
-
-# ── CEPA solver comparison: all three on same thresh_foi ──────────────────────
-# println("\n Running CEPA-0 [solver=:krylov]  thresh_foi=$thresh_foi_cepa ...")
-# GC.gc()
-# r_krylov = @timed FermiCG.do_fois_cepa(v_tpsci, cluster_ops, clustered_ham,
-#                                          cepa_shift="cepa", thresh_foi=thresh_foi_cepa,
-#                                          nbody=4, tol=1e-8, solver=:krylov, verbose=0)
-# e_krylov = r_krylov.value
-
-println("\n Running CEPA-0 [solver=:minres, build_hqq=:direct]  thresh_foi=$thresh_foi_cepa ...")
-GC.gc()
-r_direct = @timed FermiCG.do_fois_cepa(ci_vector, cluster_ops, clustered_ham,
-                                         cepa_shift="cepa", thresh_foi=thresh_foi_cepa,
-                                         nbody=4, tol=1e-8, solver=:minres,
-                                         build_hqq=:direct, verbose=0)
-e_direct = r_direct.value
-
-println("\n Running CEPA-0 [solver=:minres, build_hqq=:sparse]  thresh_foi=$thresh_foi_cepa ...")
-GC.gc()
-r_sparse_s = @timed FermiCG.do_fois_cepa(ci_vector, cluster_ops, clustered_ham,
-                                           cepa_shift="cepa", thresh_foi=thresh_foi_cepa,
-                                           nbody=4, tol=1e-8, solver=:minres,
-                                           build_hqq=:sparse, verbose=0)
-e_sparse_s = r_sparse_s.value
-
-println()
-println("═"^W)
-println(" CEPA-0 solver comparison — Cr2 13-orbital, M=40, thresh_foi=$thresh_foi_cepa")
-println("═"^W)
-@printf(" %-30s  %8s  %10s  %14s\n", "Variant", "Time(s)", "Alloc(GiB)", "E_cepa[1]")
-# @printf(" %-30s  %8.2f  %10.3f  %14.8f\n",
-#         ":krylov",                r_krylov.time,   r_krylov.bytes/2^30,   e_krylov[1])
-@printf(" %-30s  %8.2f  %10.3f  %14.8f\n",
-        ":minres / :direct",      r_direct.time,   r_direct.bytes/2^30,   e_direct[1])
-@printf(" %-30s  %8.2f  %10.3f  %14.8f\n",
-        ":minres / :sparse",      r_sparse_s.time, r_sparse_s.bytes/2^30, e_sparse_s[1])
-println("─"^W)
-# @printf(" Max |ΔE| krylov vs direct: %.2e Ha\n",
-#         maximum(abs.(e_krylov .- e_direct)))
-# @printf(" Max |ΔE| krylov vs sparse: %.2e Ha\n",
-#         maximum(abs.(e_krylov .- e_sparse_s)))
-# println("═"^W)
-
-# ── ACPF / AQCC with :sparse ──────────────────────────────────────────────────
-println("\n Running ACPF [solver=:minres, build_hqq=:sparse] ...")
-@time e_acpf = FermiCG.do_fois_cepa(ci_vector, cluster_ops, clustered_ham,
-                                      cepa_shift="acpf", thresh_foi=thresh_foi_cepa,
-                                      nbody=4, tol=1e-8, solver=:minres,
-                                      build_hqq=:sparse, verbose=0)
-
-println("\n Running AQCC [solver=:minres, build_hqq=:sparse] ...")
-@time e_aqcc = FermiCG.do_fois_cepa(ci_vector, cluster_ops, clustered_ham,
-                                      cepa_shift="aqcc", thresh_foi=thresh_foi_cepa,
-                                      nbody=4, tol=1e-8, solver=:minres,
-                                      build_hqq=:sparse, verbose=0)
-
-# ── Summary ────────────────────────────────────────────────────────────────────
-println()
-println("═"^W)
-println(" Summary — Cr2 13-orbital, spin eigenbasis M=40, cipsi=6e-4")
-println("═"^W)
-@printf(" %-12s  %5s  %14s\n", "Method", "Root", "Energy")
-for r in 1:nroots
-    @printf(" %-12s  %5i  %14.8f\n", "TPSCI",      r, e_tpsci[r])
-end
-for r in 1:nroots
-    @printf(" %-12s  %5i  %14.8f\n", "TPSCI+PT2",  r, e_tpsci[r]+ept2[r])
-end
-for (lab, ev) in [("CEPA-0", e_sparse_s), ("ACPF", e_acpf), ("AQCC", e_aqcc)]
-    for r in 1:nroots
-        @printf(" %-12s  %5i  %14.8f\n", lab, r, ev[r])
+# ── Peak memory monitor ────────────────────────────────────────────────────────
+# Polls gc_live_bytes() every 100 ms in a background task to capture peak heap usage.
+function with_peak_memory(f)
+    peak  = Ref(Base.gc_live_bytes())
+    done  = Ref(false)
+    task  = @async while !done[]
+        peak[] = max(peak[], Base.gc_live_bytes())
+        sleep(0.1)
     end
+    result = f()
+    done[] = true
+    wait(task)
+    return result, peak[]
 end
+
+# ── Run :sparse ────────────────────────────────────────────────────────────────
+println("\n Running CEPA-0 [build_hqq=:sparse]  thresh_foi=$thresh_foi_cepa ...")
+GC.gc()
+baseline_sparse = Base.gc_live_bytes()
+r_sparse, peak_sparse = with_peak_memory() do
+    @timed FermiCG.do_fois_cepa(ci_vector, cluster_ops, clustered_ham,
+                                 cepa_shift="cepa", thresh_foi=thresh_foi_cepa,
+                                 nbody=4, tol=1e-8, thresh_sigma=1e-8,
+                                 solver=:minres, build_hqq=:sparse, verbose=0)
+end
+e_sparse = r_sparse.value
+
+# ── Run :matvec ────────────────────────────────────────────────────────────────
+println("\n Running CEPA-0 [build_hqq=:matvec]  thresh_foi=$thresh_foi_cepa ...")
+GC.gc()
+baseline_matvec = Base.gc_live_bytes()
+r_matvec, peak_matvec = with_peak_memory() do
+    @timed FermiCG.do_fois_cepa(ci_vector, cluster_ops, clustered_ham,
+                                 cepa_shift="cepa", thresh_foi=thresh_foi_cepa,
+                                 nbody=4, tol=1e-8, thresh_sigma=1e-8,
+                                 solver=:minres, build_hqq=:matvec, verbose=0)
+end
+e_matvec = r_matvec.value
+
+# ── Summary table ──────────────────────────────────────────────────────────────
+println()
+println("═"^W)
+@printf(" CEPA-0 build_hqq comparison — Cr2 13-orbital, M=%i, thresh_foi=%.0e\n", M, thresh_foi_cepa)
+println("═"^W)
+@printf(" %-16s  %10s  %12s  %12s  %12s\n",
+        "build_hqq", "Time (s)", "Alloc (GiB)", "Peak (GiB)", "E_cepa[1]")
+println("─"^W)
+@printf(" %-16s  %10.2f  %12.3f  %12.3f  %12.8f\n",
+        ":sparse",
+        r_sparse.time,
+        r_sparse.bytes / 2^30,
+        (peak_sparse - baseline_sparse) / 2^30,
+        e_sparse[1])
+@printf(" %-16s  %10.2f  %12.3f  %12.3f  %12.8f\n",
+        ":matvec",
+        r_matvec.time,
+        r_matvec.bytes / 2^30,
+        (peak_matvec - baseline_matvec) / 2^30,
+        e_matvec[1])
+println("─"^W)
+@printf(" Max |ΔE| sparse vs matvec: %.2e Ha\n", maximum(abs.(e_sparse .- e_matvec)))
+println("═"^W)
+
+# ── Per-root energies ──────────────────────────────────────────────────────────
+println()
+@printf(" %-16s  %5s  %14s\n", "Method", "Root", "E_cepa")
+println("─"^W)
+for r in 1:nroots
+    @printf(" %-16s  %5i  %14.8f\n", ":sparse",  r, e_sparse[r])
+end
+println("─"^W)
+for r in 1:nroots
+    @printf(" %-16s  %5i  %14.8f\n", ":matvec",  r, e_matvec[r])
+end
+println("═"^W)
