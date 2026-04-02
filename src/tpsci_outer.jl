@@ -289,6 +289,80 @@ end
 
 
 """
+    matvec_H_qq(ci_vector::TPSCIstate, cluster_ops, clustered_ham, v) -> Vector
+
+Apply H_qq to `v` without storing H_qq.
+
+Structurally identical to `build_H_qq_sparse` but instead of accumulating COO triplets,
+each thread accumulates H_{bra,ket}×v[ket] and H_{ket,bra}×v[bra] directly into a
+per-thread result buffer. Peak memory is O(nthreads × dim_q) — a few hundred MB for
+dim_q=262K — making this viable when both the sparse builder and open_matvec_thread OOM.
+"""
+function matvec_H_qq(ci_vector::TPSCIstate{T,N,R}, cluster_ops,
+                     clustered_ham::ClusteredOperator, v::Vector{T}) where {T,N,R}
+#={{{=#
+    dim = length(ci_vector)
+    length(v) == dim || throw(DimensionMismatch("v has length $(length(v)), expected $dim"))
+    nt  = Threads.nthreads()
+
+    jobs = Vector{Tuple{Int, FockConfig{N}, ClusterConfig{N}}}()
+    bra_idx = 0
+    for (fock_bra, configs_bra) in ci_vector.data
+        for (config_bra, _) in configs_bra
+            bra_idx += 1
+            push!(jobs, (bra_idx, fock_bra, config_bra))
+        end
+    end
+
+    # Per-thread result buffers — no shared writes, no locks needed
+    res = [zeros(T, dim) for _ in 1:nt]
+
+    Threads.@threads for job in jobs
+        tid        = Threads.threadid()
+        bra_idx_j  = job[1]
+        fock_bra   = job[2]
+        config_bra = job[3]
+        ket_idx    = 0
+
+        for (fock_ket, configs_ket) in ci_vector.data
+            fock_trans = fock_bra - fock_ket
+            if !haskey(clustered_ham, fock_trans)
+                ket_idx += length(configs_ket)
+                continue
+            end
+
+            for (config_ket, _) in configs_ket
+                ket_idx += 1
+                ket_idx <= bra_idx_j || continue   # lower triangle only
+
+                me = zero(T)
+                for term in clustered_ham[fock_trans]
+                    check_term(term, fock_bra, config_bra, fock_ket, config_ket) || continue
+                    me += contract_matrix_element(term, cluster_ops, fock_bra, config_bra,
+                                                  fock_ket, config_ket)
+                end
+
+                iszero(me) && continue
+
+                res[tid][bra_idx_j] += me * v[ket_idx]
+                if bra_idx_j != ket_idx
+                    res[tid][ket_idx] += me * v[bra_idx_j]
+                end
+            end
+        end
+    end
+
+    # Reduce per-thread buffers
+    result = res[1]
+    for t in 2:nt
+        result .+= res[t]
+    end
+    return result
+end
+#=}}}=#
+
+
+"""
     function tps_ci_direct( ci_vector::TPSCIstate{T,N,R}, cluster_ops, clustered_ham::ClusteredOperator;
                         H_old    = nothing,
                         v_old    = nothing,
@@ -1452,19 +1526,27 @@ function tpsci_cepa_solve(ref_vector::TPSCIstate{T,N,R}, e0::Vector,
         # replacing per-iteration open_matvec_thread calls that each allocate ~180 GiB.
         @printf(" Building H_qq (%i × %i) [build_hqq=%s] — stored once for all MINRES solves\n",
                 dim_q, dim_q, build_hqq)
-        if build_hqq == :sparse
+        if build_hqq == :matvec
+            # Peak memory: O(nthreads × dim_q) — no H_qq stored at all.
+            # Each MINRES iteration recomputes H_qq×v on the fly. Viable for dim_q=262K
+            # where both :sparse and open_matvec_thread OOM.
+            @printf(" Using matrix-free H_qq matvec (no H_qq stored)\n")
+            Hq_mv = v -> matvec_H_qq(cepa_work, cluster_ops, clustered_ham, v)
+        elseif build_hqq == :sparse
             # Peak memory: O(nnz) — per-thread COO triplets, no dim_q² allocation
             @time H_qq = build_H_qq_sparse(cepa_work, cluster_ops, clustered_ham)
             # @printf(" H_qq sparsity: nnz=%i  (%.2f%% fill)\n",
             #         nnz(H_qq), 100*nnz(H_qq)/dim_q^2)
+            Hq_mv = v -> H_qq * v
         elseif build_hqq == :direct
             # Peak memory: 1×dim_q²×8 B — threads write directly into H rows (no scratch copies)
             @time H_qq = build_H_qq(cepa_work, cluster_ops, clustered_ham)
+            Hq_mv = v -> H_qq * v
         else
             # build_hqq == :parallel — uses build_full_H_parallel (peak 2×dim_q²×8 B due to scratch)
             @time H_qq = build_full_H_parallel(cepa_work, cepa_work, cluster_ops, clustered_ham, sym=true)
+            Hq_mv = v -> H_qq * v
         end
-        Hq_mv = v -> H_qq * v
     else
         function Hq_matvec(v::Vector{T})
             set_vector!(cepa_work, v, root=1)
