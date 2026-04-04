@@ -483,7 +483,11 @@ function tucker_decompose(Av::NTuple{R,Array{T,N}}; thresh=1e-7, max_number=noth
             @turbo tmp2 .= reshape(tmp, size(Av[r],i), length(Av[r])÷size(Av[r],i))
             @turbo G .+= tmp2*tmp2'
         end
-        F = eigen(G) 
+        if any(!isfinite, G)
+            @warn "tucker_decompose: NaN/Inf in Gram matrix at index $i — zeroing"
+            G .= 0.0
+        end
+        F = eigen(G)
         F.values .= abs.(F.values)
         perm2 = sortperm(real(F.values), rev=true)
         Σ = sqrt.(F.values[perm2])
@@ -584,7 +588,11 @@ function tucker_initialize(Av::NTuple{R,Array{T,N}}; num_roots=nothing, max_numb
             @turbo tmp2 .= reshape(tmp, size(Av[r],i), length(Av[r])÷size(Av[r],i))
             @turbo G .+= tmp2*tmp2'
         end
-        F = eigen(G) 
+        if any(!isfinite, G)
+            @warn "tucker_decompose: NaN/Inf in Gram matrix at index $i — zeroing"
+            G .= 0.0
+        end
+        F = eigen(G)
         F.values .= abs.(F.values)
         perm2 = sortperm(real(F.values), rev=true)
         Σ = sqrt.(F.values[perm2])
