@@ -267,7 +267,7 @@ function tucker_cepa_solve(ref_vector::BSTstate{T,N,R}, cepa_vector::BSTstate, c
 
     sig = deepcopy(ref_vector)
     zero!(sig)
-    build_sigma!(sig, ref_vector, cluster_ops, clustered_ham, cache=false)
+    build_sigma_cepa!(sig, ref_vector, cluster_ops, clustered_ham, cache=false)
     e0 = nonorth_dot(ref_vector, sig)
     length(e0) == 1 || error("Only one state at a time please", e0)
     e0 = e0[1]
@@ -280,7 +280,7 @@ function tucker_cepa_solve(ref_vector::BSTstate{T,N,R}, cepa_vector::BSTstate, c
     # h[:,r] = <X|H|A_r>  in the Tucker core basis of the Q-space
     b = deepcopy(x_vector)
     zero!(b)
-    build_sigma!(b, ref_vector, cluster_ops, clustered_ham, cache=false)
+    build_sigma_cepa!(b, ref_vector, cluster_ops, clustered_ham, cache=false)
     h = get_vector(b)   # dim_x × R
 
     # Sx[:,r] = <X|A_r>  —  Tucker factor overlap between Q-space and reference
@@ -362,7 +362,7 @@ function tucker_cepa_solve(ref_vector::BSTstate{T,N,R}, cepa_vector::BSTstate, c
                 xl = BSTstate(x_vector, R=1)
                 set_vector!(xr, vec(v_q), root=1)
                 zero!(xl)
-                build_sigma!(xl, xr, cluster_ops, clustered_ham, cache=cache)
+                build_sigma_cepa!(xl, xr, cluster_ops, clustered_ham, cache=cache)
                 tmp = deepcopy(xr)
                 scale!(tmp, -eshift)
                 orth_add!(xl, tmp)
