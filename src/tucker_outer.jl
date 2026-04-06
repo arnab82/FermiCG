@@ -1320,6 +1320,7 @@ function do_fois_cepa(ref::BSTstate{T,N,R}, cluster_ops, clustered_ham;
     tol          = 1e-5,
     compress_type = "matvec",
     prescreen    = false,
+    compute_S2   = false,
     verbose      = true,
     solver       = :minres) where {T,N,R}   
  
@@ -1385,18 +1386,19 @@ function do_fois_cepa(ref::BSTstate{T,N,R}, cluster_ops, clustered_ham;
  
         @printf(" E(cepa) corr =                 %12.8f\n", e_cepa[1])
         @printf(" X(cepa) norm =                 %12.8f\n", sqrt(orth_dot(x_cepa, x_cepa)[1]))
- 
-        clustered_S2 = extract_S2(x_cepa.clusters)
-        @printf(" %-50s", "Compute <S^2>: ")
         flush(stdout)
-        tmp = deepcopy(x_cepa)
-        zero!(tmp)
-        @time build_sigma_cepa!(tmp, x_cepa, cluster_ops, clustered_S2)
-        s2 = orth_dot(tmp, x_cepa)
-        flush(stdout)
-        @printf(" %5s %12s %12s\n", "Root", "Energy", "S2")
-        @printf("%5i %12.8f %12.8f\n", i, e_cepa[1], s2[1])
- 
+        if compute_S2==true
+            clustered_S2 = extract_S2(x_cepa.clusters)
+            @printf(" %-50s", "Compute <S^2>: ")
+            flush(stdout)
+            tmp = deepcopy(x_cepa)
+            zero!(tmp)
+            @time build_sigma_cepa!(tmp, x_cepa, cluster_ops, clustered_S2)
+            s2 = orth_dot(tmp, x_cepa)
+            flush(stdout)
+            @printf(" %5s %12s %12s\n", "Root", "Energy", "S2")
+            @printf("%5i %12.8f %12.8f\n", i, e_cepa[1], s2[1])
+        end
         push!(e_cepa_vec, e_cepa[1])
     end
  
