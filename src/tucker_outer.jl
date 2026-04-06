@@ -480,7 +480,7 @@ function tucker_cepa_solve2(ref_vector::BSTstate, cepa_vector::BSTstate, cluster
 #={{{=#
     sig = deepcopy(ref_vector)
     zero!(sig)
-    !(sig, ref_vector, cluster_ops, clustered_ham, cache=false)
+    build_sigma!(sig, ref_vector, cluster_ops, clustered_ham, cache=false)
     e0 = nonorth_dot(ref_vector, sig)
     length(e0) == 1 || error("Only one state at a time please", e0)
     e0 = e0[1]
