@@ -480,7 +480,7 @@ function tucker_cepa_solve2(ref_vector::BSTstate, cepa_vector::BSTstate, cluster
 #={{{=#
     sig = deepcopy(ref_vector)
     zero!(sig)
-    build_sigma!(sig, ref_vector, cluster_ops, clustered_ham, cache=false)
+    !(sig, ref_vector, cluster_ops, clustered_ham, cache=false)
     e0 = nonorth_dot(ref_vector, sig)
     length(e0) == 1 || error("Only one state at a time please", e0)
     e0 = e0[1]
@@ -1391,7 +1391,7 @@ function do_fois_cepa(ref::BSTstate{T,N,R}, cluster_ops, clustered_ham;
         flush(stdout)
         tmp = deepcopy(x_cepa)
         zero!(tmp)
-        @time build_sigma!(tmp, x_cepa, cluster_ops, clustered_S2)
+        @time build_sigma_cepa!(tmp, x_cepa, cluster_ops, clustered_S2)
         s2 = orth_dot(tmp, x_cepa)
         flush(stdout)
         @printf(" %5s %12s %12s\n", "Root", "Energy", "S2")
