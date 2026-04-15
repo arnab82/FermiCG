@@ -88,6 +88,9 @@ include("dense_outer.jl")
 include("spt_variance.jl")
 # include("tps_trimci.jl")
 
+include("tpsci_property.jl")
+include("absorption_spectrum.jl")
+
 #
 #####################################
 
@@ -110,4 +113,13 @@ export add_fockconfig!
 export expand_each_fock_space!
 export block_sparse_tucker
 export correlation_functions
+export compute_1rdm
+export compute_1rdm_sf
+export compute_2rdm
+export contract_1rdm_property
+export compute_1e_property_direct
+export compute_transition_dipoles
+export compute_oscillator_strengths
+export absorption_spectrum
+export print_stick_spectrum
 end
