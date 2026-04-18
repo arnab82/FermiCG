@@ -7,100 +7,167 @@ using JLD2
 using Printf
 using LinearAlgebra
 
-@load "data_cmf.jld2"
+@load "data_cmf.jld2" clusters init_fspace ints d1 e_cmf U dip_cmf nabla_cmf Ccmf soc_Lx_cmf soc_Ly_cmf soc_Lz_cmf K_12_cmf K_13_cmf K_23_cmf
 
 M = 100
 
 init_fspace = FockConfig([(3,0), (3, 3), (0, 3)])
-init_fspace1= FockConfig([(2,0), (3, 3), (0, 4)])
 let
     cluster_bases = FermiCG.compute_cluster_eigenbasis_spin(ints, clusters, d1, [10,10,10], init_fspace, max_roots=M, verbose=1);
 
-    # CT Fock sectors
+    # ------------------------------------------------------------------
+    # Fock sectors: reference M_S=0 + CT (M_S=0,-1) + M_S=±1 + M_S=±2
+    # Reference: C1=(3,0), C2=(3,3), C3=(0,3)  Na=6, Nb=6
+    # Note: C2 is fully filled (3 orbs, 3α+3β) — no spin flips possible on C2.
+    #
+    # M_S=0 CT sectors (inter-cluster charge transfer):
+    #   α: C1→C3      C1=(2,0), C3=(1,3)
+    #   α: C2→C3      C2=(2,3), C3=(1,3)
+    #   β: C3→C1      C1=(3,1), C3=(0,2)
+    #   β: C2→C1      C1=(3,1), C2=(3,2)
+    #   spin-exchange C1↔C3: C1=(2,1), C3=(1,2)
+    #
+    # M_S=-1 CT sector (C1 loses 1α, C3 gains 1β):
+    #   C1=(2,0), C3=(0,4)
+    #
+    # M_S=+1 sectors (single β→α flip, Na=7, Nb=5):
+    #   C3: (0,3)→(1,2)              [only C3 has β electrons to flip]
+    #
+    # M_S=−1 sectors (single α→β flip, Na=5, Nb=7):
+    #   C1: (3,0)→(2,1)              [only C1 has α electrons to flip]
+    #
+    # M_S=+2 sectors (two β→α flips, Na=8, Nb=4):
+    #   C3: (0,3)→(2,1)
+    #
+    # M_S=−2 sectors (two α→β flips, Na=4, Nb=8):
+    #   C1: (3,0)→(1,2)
+    # M_S=−3 sector (three α→β flips, Na=3, Nb=9):
+    #   C1: (3,0)→(0,3) 
+    # M_S=+3 sector (three β→α flips, Na=9, Nb=3):
+    #   C3: (0,3)→(3,0)
+    # ------------------------------------------------------------------
     ct_fspaces = [
-        FockConfig([(2,0), (3,3), (0,4)]),
-        FockConfig([(2,0), (3,3), (1,3)]),
-        FockConfig([(3,0), (2,3), (1,3)]),
-        FockConfig([(3,1), (3,3), (0,2)]),
-        FockConfig([(3,1), (3,2), (0,3)]),
-        FockConfig([(2,1), (3,3), (1,2)]),
+        # Spin partner of AFM reference: C1 majority-β, C3 majority-α
+        # Required so cluster_bases covers C1=(0,3) and C3=(3,0).
+        # add_spin_focksectors is NOT used — that would inject sectors missing from cluster_bases.
+        FockConfig([(0, 3), (3, 3), (3, 0)]),   # spin-flipped AFM partner
+        # M_S = 0 charge-transfer sectors
+        FockConfig([(2,0), (3,3), (1,3)]),   # α: C1→C3
+        FockConfig([(3,0), (2,3), (1,3)]),   # α: C2→C3
+        FockConfig([(3,1), (3,3), (0,2)]),   # β: C3→C1
+        FockConfig([(3,1), (3,2), (0,3)]),   # β: C2→C1
+        FockConfig([(2,1), (3,3), (1,2)]),   # spin-exchange C1↔C3
+        # M_S = -1 CT sector
+        FockConfig([(2,0), (3,3), (0,4)]),   # C1 loses 1α, C3 gains 1β
+        # M_S = +1  (β→α flip on C3, the only cluster with free β electrons)
+        FockConfig([(3, 0), (3, 3), (1, 2)]),   # C3: (0,3)→(1,2)
+        # M_S = -1  (α→β flip on C1, the only cluster with free α electrons)
+        FockConfig([(2, 1), (3, 3), (0, 3)]),   # C1: (3,0)→(2,1)
+        # M_S = +2  (two β→α flips in C3)
+        FockConfig([(3, 0), (3, 3), (2, 1)]),   # C3: (0,3)→(2,1)
+        # M_S = -2  (two α→β flips in C1)
+        FockConfig([(1, 2), (3, 3), (0, 3)]),   # C1: (3,0)→(1,2)
+        # M_S = -3  (three α→β flips in C1) — also covers C1=(0,3) for AFM partner
+        FockConfig([(0, 3), (3, 3), (0, 3)]),   # C1: (3,0)→(0,3)
+        # M_S = +3  (three β→α flips in C3)
+        FockConfig([(3, 0), (3, 3), (3, 0)]),   # C3: (0,3)→(3,0)
     ]
 
     for fs in ct_fspaces
         cb = FermiCG.compute_cluster_eigenbasis_spin(
-            ints, clusters, d1, [10,10,10], fs, max_roots=5, verbose=0)
+            ints, clusters, d1, [10,10,10], fs, max_roots=100, verbose=0)
         cluster_bases = FermiCG.merge_cluster_bases(cluster_bases, cb)
     end
 
-clustered_ham = FermiCG.extract_ClusteredTerms(ints, clusters);
-cluster_ops = FermiCG.compute_cluster_ops(cluster_bases, ints);
+    clustered_ham = FermiCG.extract_ClusteredTerms(ints, clusters);
+    cluster_ops = FermiCG.compute_cluster_ops(cluster_bases, ints);
 
-FermiCG.add_cmf_operators!(cluster_ops, cluster_bases, ints, d1.a, d1.b);
+    FermiCG.add_cmf_operators!(cluster_ops, cluster_bases, ints, d1.a, d1.b);
 
-nroots=10
+    nroots = 20
 
+    ci_vector = FermiCG.TPSCIstate(clusters, init_fspace, R=nroots)
+    ci_vector = FermiCG.add_spin_focksectors(ci_vector)   
+    # Spin-flipped AFM partner — needed to represent the M_S=0 AFM ground state properly
+    FermiCG.add_fockconfig!(ci_vector, FockConfig([(0, 3), (3, 3), (3, 0)]))
+    # M_S = 0 CT sectors
+    FermiCG.add_fockconfig!(ci_vector, FockConfig([(2, 0), (3, 3), (1, 3)]))
+    FermiCG.add_fockconfig!(ci_vector, FockConfig([(3, 0), (2, 3), (1, 3)]))
+    FermiCG.add_fockconfig!(ci_vector, FockConfig([(3, 1), (3, 3), (0, 2)]))
+    FermiCG.add_fockconfig!(ci_vector, FockConfig([(3, 1), (3, 2), (0, 3)]))
+    FermiCG.add_fockconfig!(ci_vector, FockConfig([(2, 1), (3, 3), (1, 2)]))
+    ci_vector = FermiCG.add_spin_focksectors(ci_vector)  
+    # M_S = -1 CT sector
+    FermiCG.add_fockconfig!(ci_vector, FockConfig([(2, 0), (3, 3), (0, 4)]))
+    # M_S = +1  (needed for non-zero SOC_+)
+    FermiCG.add_fockconfig!(ci_vector, FockConfig([(3, 0), (3, 3), (1, 2)]))
+    # M_S = -1  (needed for non-zero SOC_-)
+    FermiCG.add_fockconfig!(ci_vector, FockConfig([(2, 1), (3, 3), (0, 3)]))
+    # # M_S = +2
+    # FermiCG.add_fockconfig!(ci_vector, FockConfig([(3, 0), (3, 3), (2, 1)]))
+    # # M_S = -2
+    # FermiCG.add_fockconfig!(ci_vector, FockConfig([(1, 2), (3, 3), (0, 3)]))
+    # # M_S = -3
+    # FermiCG.add_fockconfig!(ci_vector, FockConfig([(0, 3), (3, 3), (0, 3)]))
+    # # M_S = +3
+    # FermiCG.add_fockconfig!(ci_vector, FockConfig([(3, 0), (3, 3), (3, 0)]))
 
-ci_vector = FermiCG.TPSCIstate(clusters, init_fspace, R=nroots)
-ci_vector = FermiCG.add_spin_focksectors(ci_vector)
+    fspace_0 = init_fspace
 
-# form single excitonic states by adding CT sectors to the reference root
-FermiCG.add_fockconfig!(ci_vector, FockConfig([(2,0), (3, 3), (0, 4)]))
-FermiCG.add_fockconfig!(ci_vector, FockConfig([(2,0), (3, 3), (1, 3)]))
-FermiCG.add_fockconfig!(ci_vector, FockConfig([(3,0), (2, 3), (1, 3)]))
-FermiCG.add_fockconfig!(ci_vector, FockConfig([(3,1), (3, 3), (0, 2)]))
-FermiCG.add_fockconfig!(ci_vector, FockConfig([(3,1), (3, 2), (0, 3)]))
-FermiCG.add_fockconfig!(ci_vector, FockConfig([(2,1), (3, 3), (1, 2)]))
-# ------------------------------------------------------------------
-# Charge-transfer Fock sectors for excited electronic states.
+    # M_S = 0 CT via FermiCG.replace
+    tmp_fspace = FermiCG.replace(fspace_0, (1,3), ([2,0],[1,3]))   # α: C1→C3
+    FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
+    ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64, nroots)
 
-# Single-electron CT (Na=6, Nb=6 conserved throughout):
-#   α: C1(3,0)→C3(0,3)   new sectors: C1=(2,0), C3=(1,3)
-#   α: C2(3,3)→C3(0,3)   new sectors: C2=(2,3), C3=(1,3)
-#   β: C3(0,3)→C1(3,0)   new sectors: C3=(0,2), C1=(3,1)
-#   β: C2(3,3)→C1(3,0)   new sectors: C2=(3,2), C1=(3,1)
-#
-# Double CT / spin-exchange C1↔C3 (−1α+1β on C1, +1α−1β on C3):
-#   new sectors: C1=(2,1), C3=(1,2)  
-# ------------------------------------------------------------------
+    tmp_fspace = FermiCG.replace(fspace_0, (2,3), ([2,3],[1,3]))   # α: C2→C3
+    FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
+    ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64, nroots)
 
-fspace_0 = init_fspace
+    tmp_fspace = FermiCG.replace(fspace_0, (1,3), ([3,1],[0,2]))   # β: C3→C1
+    FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
+    ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64, nroots)
 
-# α: C1 → C3
-tmp_fspace = FermiCG.replace(fspace_0, (1,3), ([2,0],[1,3]))
-FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
-ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64,nroots)
+    tmp_fspace = FermiCG.replace(fspace_0, (1,2), ([3,1],[3,2]))   # β: C2→C1
+    FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
+    ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64, nroots)
 
-# α: C2 → C3
-tmp_fspace = FermiCG.replace(fspace_0, (2,3), ([2,3],[1,3]))
-FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
-ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64,nroots)
-
-# β: C3 → C1
-tmp_fspace = FermiCG.replace(fspace_0, (1,3), ([3,1],[0,2]))
-FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
-ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64,nroots)
-
-# β: C2 → C1
-tmp_fspace = FermiCG.replace(fspace_0, (1,2), ([3,1],[3,2]))
-FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
-ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64,nroots)
-
-# Spin-exchange C1↔C3: -1α+1β on C1, +1α-1β on C3
-tmp_fspace = FermiCG.replace(fspace_0, (1,3), ([2,1],[1,2]))
-FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
-ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64,nroots)
-
-# Add spin sectors for all CT FockConfigs
-ci_vector = FermiCG.add_spin_focksectors(ci_vector)
-
+    tmp_fspace = FermiCG.replace(fspace_0, (1,3), ([2,1],[1,2]))   # spin-exchange C1↔C3
+    FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
+    ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64, nroots)
+    # M_S = +1 CT via FermiCG.replace
+    tmp_fspace = FermiCG.replace(fspace_0, (3,3), ([0,3],[1,2]))   # C3: (0,3)→(1,2)
+    FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
+    ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64, nroots)
+    # M_S = -1 CT via FermiCG.replace
+    tmp_fspace = FermiCG.replace(fspace_0, (1,1), ([3,0],[2,1]))   # C1: (3,0)→(2,1)
+    FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
+    ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64, nroots)
+    # # M_S = +2 CT via FermiCG.replace
+    # tmp_fspace = FermiCG.replace(fspace_0, (3,3), ([0,3],[2,1]))   # C3: (0,3)→(2,1)
+    # FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
+    # ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64, nroots)
+    # # M_S = -2 CT via FermiCG.replace
+    # tmp_fspace = FermiCG.replace(fspace_0, (1,1), ([3,0],[1,2]))   # C1: (3,0)→(1,2)
+    # FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
+    # ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64, nroots)
+    # # M_S = -3 CT via FermiCG.replace
+    # tmp_fspace = FermiCG.replace(fspace_0, (1,1), ([3,0],[0,3]))   # C1: (3,0)→(0,3)
+    # FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
+    # ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64, nroots)
+    # # M_S = +3 CT via FermiCG.replace
+    # tmp_fspace = FermiCG.replace(fspace_0, (3,3), ([0,3],[3,0]))   # C3: (0,3)→(3,0)
+    # FermiCG.add_fockconfig!(ci_vector, tmp_fspace)
+    # ci_vector[tmp_fspace][FermiCG.ClusterConfig([1,1,1])] = zeros(Float64, nroots)  
 FermiCG.eye!(ci_vector)
 
 eci, v = FermiCG.tps_ci_direct(ci_vector, cluster_ops, clustered_ham);
 
 e0a, v0a = FermiCG.tpsci_ci(ci_vector, cluster_ops, clustered_ham, incremental=true,
-                            thresh_cipsi = 1e-3,
+                            max_iter=20,
+                            thresh_cipsi = 8e-4,
                             thresh_foi   = 1e-6,
                             thresh_asci  = -1);
+@save "tpsci_results.jld2" e0a v0a ci_vector cluster_bases
 γ_aa, γ_bb = FermiCG.compute_1rdm(v0a, cluster_ops)
 
 # ------------------------------------------------------------------
@@ -157,19 +224,15 @@ npzwrite("tpsci_spectrum.npz", Dict(
     end
     
     savefig(p, "tpsci_spectrum.pdf")
-    display(p)
+
     
 # ==============================================================================
 # Spin-flip 1-RDM and Spin-Orbit Coupling
 # ==============================================================================
+println("\n Computing spin-flip 1-RDM and SOC matrix elements...")
 γ_ab, γ_ba = FermiCG.compute_1rdm_sf(v0a, cluster_ops)
 
-# Load SOC integrals (MO basis, saved by property_integrals_pyscf.ipynb)
-# Expected shape: (norb, norb) each
-soc_Lx = npzread("soc_Lx.npy")
-soc_Ly = npzread("soc_Ly.npy")
-soc_Lz = npzread("soc_Lz.npy")
-
+# SOC integrals in CMF basis — loaded from data_cmf.jld2 (rotated by cmf.jl)
 # SOC matrix elements H_SOC[r1,r2] broken into z, +, - components:
 #   H_SOC = h_z*(γ_aa - γ_bb) + h_+*γ_ab + h_-*γ_ba
 # where h_z = L_z (imaginary, stored real: multiply by im),
@@ -178,9 +241,9 @@ SOC_z = zeros(ComplexF64, nroots, nroots)
 SOC_p = zeros(ComplexF64, nroots, nroots)
 SOC_m = zeros(ComplexF64, nroots, nroots)
 
-h_z  = im .* soc_Lz                     # <p|L_z|q> is purely imaginary
-h_pl = (soc_Lx .+ im .* soc_Ly) ./ sqrt(2)
-h_mn = (soc_Lx .- im .* soc_Ly) ./ sqrt(2)
+h_z  = im .* soc_Lz_cmf                     # <p|L_z|q> is purely imaginary
+h_pl = (soc_Lx_cmf .+ im .* soc_Ly_cmf) ./ sqrt(2)
+h_mn = (soc_Lx_cmf .- im .* soc_Ly_cmf) ./ sqrt(2)
 
 for r2 in 1:nroots, r1 in 1:nroots
     Δγ = γ_aa[:, :, r1, r2] .- γ_bb[:, :, r1, r2]
@@ -209,14 +272,16 @@ end
 # ==============================================================================
 # 2-RDM and Exchange Coupling
 # ==============================================================================
-Γ = FermiCG.compute_2rdm(v0a, cluster_ops)
+println("\n Computing 2-RDM and exchange coupling constants J_IJ...")
+Γ=FermiCG.compute_2rdm_blas(v0a, cluster_ops)
+# Γ = FermiCG.compute_2rdm(v0a, cluster_ops)
 
-# Load cluster-pair exchange integrals K_{IJ}[p,q,r,s]
-# Shape: (norb_I, norb_J, norb_I, norb_J) = (pI, qJ, rI, sJ)
-# Saved by property_integrals_pyscf.ipynb as K_12_exch.npy, K_13_exch.npy, K_23_exch.npy
-K_12 = npzread("K_12_exch.npy")   # (orb_C1, orb_C2, orb_C1, orb_C2)
-K_13 = npzread("K_13_exch.npy")   # (orb_C1, orb_C3, orb_C1, orb_C3)
-K_23 = npzread("K_23_exch.npy")   # (orb_C2, orb_C3, orb_C2, orb_C3)
+# Cluster-pair exchange integrals in CMF basis — loaded from data_cmf.jld2.
+# K_IJ_cmf[p,r,q,s] = (pr|qs), p,r in cluster I; q,s in cluster J.
+# These were extracted from ints.h2 after orbital_rotation(ints,U) in cmf.jl.
+K_12 = K_12_cmf
+K_13 = K_13_cmf
+K_23 = K_23_cmf
 
 # Cluster orbital offsets
 off = [0; cumsum([length(c.orb_list) for c in clusters])]
@@ -234,16 +299,18 @@ let
     o3 = off[3]+1:off[4]   # cluster 3
     norb1 = length(o1); norb2 = length(o2); norb3 = length(o3)
 
+    # K_IJ[p,r,q,s] = (pr|qs) with p,r∈I and q,s∈J
+    # J = (1/2) Σ_{p,r∈I; q,s∈J} (pr|qs) Γ[p,q,r,s]
     for rr in 1:nroots_diag
         acc12 = 0.0; acc13 = 0.0; acc23 = 0.0
         for p in 1:norb1, r in 1:norb1, q in 1:norb2, s in 1:norb2
-            acc12 += K_12[p, q, r, s] * Γ[o1[p], o2[q], o1[r], o2[s], rr, rr]
+            acc12 += K_12[p, r, q, s] * Γ[o1[p], o2[q], o1[r], o2[s], rr, rr]
         end
         for p in 1:norb1, r in 1:norb1, q in 1:norb3, s in 1:norb3
-            acc13 += K_13[p, q, r, s] * Γ[o1[p], o3[q], o1[r], o3[s], rr, rr]
+            acc13 += K_13[p, r, q, s] * Γ[o1[p], o3[q], o1[r], o3[s], rr, rr]
         end
         for p in 1:norb2, r in 1:norb2, q in 1:norb3, s in 1:norb3
-            acc23 += K_23[p, q, r, s] * Γ[o2[p], o3[q], o2[r], o3[s], rr, rr]
+            acc23 += K_23[p, r, q, s] * Γ[o2[p], o3[q], o2[r], o3[s], rr, rr]
         end
         J12[rr] = 0.5 * acc12
         J13[rr] = 0.5 * acc13
@@ -259,4 +326,8 @@ for rr in 1:nroots_diag
 end
 
 e2a = FermiCG.compute_pt2_energy(v0a, cluster_ops, clustered_ham)
+
+# ---- Save RDMs and energies for spin_correlators.jl ----
+@save "tpsci_rdms.jld2" e0a γ_aa γ_bb Γ
+println("Saved tpsci_rdms.jld2: e0a, γ_aa, γ_bb, Γ")
 end
