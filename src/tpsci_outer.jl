@@ -1444,7 +1444,7 @@ function do_fois_cepa(ref::TPSCIstate{T,N,R}, cluster_ops, clustered_ham;
         @printf(" E(cepa) root %i  corr= %12.8f  total= %12.8f\n", i, Ec[i], e_cepa[i])
     end
 
-    return e_cepa
+    return e_cepa, pt1_vec
 end
 
 
