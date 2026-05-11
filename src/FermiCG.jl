@@ -115,7 +115,8 @@ export block_sparse_tucker
 export correlation_functions
 export compute_1rdm
 export compute_1rdm_sf
-export compute_2rdm
+export compute_1rdm_threaded
+export compute_1rdm_sf_threaded
 export contract_1rdm_property
 export compute_1e_property_direct
 export compute_transition_dipoles

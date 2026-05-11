@@ -1025,46 +1025,44 @@ function compute_1e_property_direct(psi::TPSCIstate{T,N,R},
                                      h_prop::AbstractMatrix{T}) where {T,N,R}
     return compute_1e_property_direct(psi, psi, cluster_ops, h_prop)
 end
+"""
+tpsci_property_threaded.jl
+
+Parallel (multi-threaded) versions of compute_1rdm and compute_1rdm_sf.
+
+Strategy
+--------
+Both functions have two independent loops:
+  1. On-cluster  : pairs (fock, ci)   — flattened and distributed with @threads
+  2. Inter-cluster: pairs (ci, cj)    — flattened and distributed with @threads
+
+Each thread accumulates into its own local γ array (γ_xx_loc[threadid()]).
+These are summed serially at the end, so there are no data races and no locks.
+
+Usage
+-----
+    γ_aa, γ_bb = compute_1rdm_threaded(bra, ket, cluster_ops)
+    γ_ab, γ_ba = compute_1rdm_sf_threaded(bra, ket, cluster_ops)
+
+The single-state wrappers (bra == ket) are also provided.
+"""
+
+using Base.Threads
 
 
 # ---------------------------------------------------------------------------
-# 2-RDM
+# Parallel 1-RDM
 # ---------------------------------------------------------------------------
 """
-    compute_2rdm(bra::TPSCIstate, ket::TPSCIstate, cluster_ops)
+    compute_1rdm_threaded(bra, ket, cluster_ops)
 
-Compute the spin-free transition two-particle reduced density matrix
-
-    Γ[p,q,r,s, r1,r2] = Σ_{σ,τ} <bra_{r1}|p†_σ q†_τ s_τ r_σ|ket_{r2}>
-
-Shape: (norb, norb, norb, norb, R1, R2).
-
-Three topological contributions are assembled:
-
-  1. On-cluster (I,I,I,I): all four orbital indices on the same cluster I.
-        Uses the composition identity
-          <u|p†q†sr|v> = <u|p†r q†s|v> - δ_{qr}<u|p†s|v>
-        which lets the local 4-body matrix element be expressed via two
-        applications of the stored "Aa"/"Bb" operators (inserting the
-        cluster resolution of identity over intermediate states w).
-
-  2. Inter-cluster Fock-diagonal (I,J,I,J): p,r ∈ I and q,s ∈ J (I≠J).
-        Each cluster has one creation and one annihilation → both clusters
-        remain Fock-neutral.  Sign = +1 (number-conserving operators at each
-        cluster generate no inter-cluster Jordan-Wigner string).
-        Uses "Aa"[I]×"Aa"[J], "Aa"[I]×"Bb"[J], "Bb"[I]×"Aa"[J], "Bb"[I]×"Bb"[J].
-
-  3. Inter-cluster charge-transfer (I,I,J,J): p,q ∈ I (both creations) and
-        r,s ∈ J (both annihilations).  Bra and ket sit in different Fock sectors.
-        Signs (from the image formula χ = Σ_{K=I}^{J-1} N_K):
-          αα, ββ pairs  → sign = +1   (two same-spin ops cancel inter-cluster string)
-          αβ, βα pairs  → sign = (-1)^χ = _rdm_sign(fock_ket, I, J)
-        Uses "AA"[I]×"aa"[J] (αα), "BB"[I]×"bb"[J] (ββ),
-             "AB"[I]×"ba"[J] (αβ), "BA"[I]×"ab"[J] (βα).
+Multi-threaded version of `compute_1rdm`. Returns (γ_aa, γ_bb), each of
+shape (norb, norb, R1, R2). Results are numerically identical to the serial
+version within floating-point rounding.
 """
-function compute_2rdm(bra::TPSCIstate{T,N,R1},
-                      ket::TPSCIstate{T,N,R2},
-                      cluster_ops::Vector{ClusterOps{T}}) where {T,N,R1,R2}
+function compute_1rdm_threaded(bra::TPSCIstate{T,N,R1},
+                                ket::TPSCIstate{T,N,R2},
+                                cluster_ops::Vector{ClusterOps{T}}) where {T,N,R1,R2}
 
     clusters = bra.clusters
     norb     = sum(length(c) for c in clusters)
@@ -1074,271 +1072,146 @@ function compute_2rdm(bra::TPSCIstate{T,N,R1},
         orb_offsets[i] = orb_offsets[i-1] + length(clusters[i-1])
     end
 
-    Γ = zeros(T, norb, norb, norb, norb, R1, R2)
+    nthreads  = Threads.nthreads()
+    γ_aa_loc  = [zeros(T, norb, norb, R1, R2) for _ in 1:nthreads]
+    γ_bb_loc  = [zeros(T, norb, norb, R1, R2) for _ in 1:nthreads]
 
-    # =========================================================
-    # 1. ON-CLUSTER (I,I,I,I)
-    # =========================================================
-    # Using: <u|p†q†sr|v> = <u|p†r q†s|v> - δ_{qr}<u|p†s|v>
-    # Insert cluster resolution-of-identity over w between the two 1-body ops.
-    #
-    # Spin-summed:
-    #   Σ_σΣ_τ <u|p†_σ q†_τ s_τ r_σ|v>
-    # = [Aa(p,r,u,w)Aa(q,s,w,v) - δ_{qr}Aa(p,s,u,v)]   (σ=τ=α)
-    # + [Aa(p,r,u,w)Bb(q,s,w,v)]                          (σ=α,τ=β)
-    # + [Bb(p,r,u,w)Aa(q,s,w,v)]                          (σ=β,τ=α)
-    # + [Bb(p,r,u,w)Bb(q,s,w,v) - δ_{qr}Bb(p,s,u,v)]    (σ=τ=β)
-    # (δ_{qr} applies only to same-spin terms since cross-spin ops commute)
+    # ==========================================================
+    # 1. ON-CLUSTER — @threads over (fock, ci) pairs
+    # ==========================================================
+    fock_list  = [fock for (fock, _) in bra.data if haskey(ket.data, fock)]
+    on_cluster_pairs = [(fock, ci) for fock in fock_list for ci in clusters]
 
-    for (fock, configs_bra) in bra.data
-        haskey(ket.data, fock) || continue
+    @threads for idx in eachindex(on_cluster_pairs)
+        tid  = Threads.threadid()
+        fock, ci = on_cluster_pairs[idx]
+
+        configs_bra = bra.data[fock]
         configs_ket = ket.data[fock]
-
-        for ci in clusters
-            ci_idx = ci.idx
-            norb_i = length(ci)
-            off_i  = orb_offsets[ci_idx]
-            ftrans = (fock[ci_idx], fock[ci_idx])
-
-            haskey(cluster_ops[ci_idx], "Aa") || continue
-            haskey(cluster_ops[ci_idx]["Aa"], ftrans) || continue
-            haskey(cluster_ops[ci_idx], "Bb") || continue
-            haskey(cluster_ops[ci_idx]["Bb"], ftrans) || continue
-
-            _raw_Aa = cluster_ops[ci_idx]["Aa"][ftrans]
-            n_s = size(_raw_Aa, 2); n_t = size(_raw_Aa, 3)
-            Aa_i = reshape(_raw_Aa, norb_i, norb_i, n_s, n_t)
-            Bb_i = reshape(cluster_ops[ci_idx]["Bb"][ftrans], norb_i, norb_i, n_s, n_t)
-            n_st = max(n_s, n_t)   # square over the larger dimension for intermediate w
-
-            # ---- Build cluster RDM ρ_I[s,t,r1,r2] ----
-            ρ = zeros(T, n_s, n_t, R1, R2)
-            bra_groups = Dict{Vector{Int16}, Vector{Pair{Int16, MVector{R1,T}}}}()
-            for (config, coeff) in configs_bra
-                key = [config[k] for k in 1:N if k != ci_idx]
-                push!(get!(bra_groups, key, Pair{Int16,MVector{R1,T}}[]),
-                      config[ci_idx] => coeff)
-            end
-            ket_groups = Dict{Vector{Int16}, Vector{Pair{Int16, MVector{R2,T}}}}()
-            for (config, coeff) in configs_ket
-                key = [config[k] for k in 1:N if k != ci_idx]
-                push!(get!(ket_groups, key, Pair{Int16,MVector{R2,T}}[]),
-                      config[ci_idx] => coeff)
-            end
-            for (key, bra_list) in bra_groups
-                haskey(ket_groups, key) || continue
-                for (s_i, c_bra) in bra_list
-                    for (t_i, c_ket) in ket_groups[key]
-                        for r2 in 1:R2, r1 in 1:R1
-                            ρ[s_i, t_i, r1, r2] += c_bra[r1] * c_ket[r2]
-                        end
-                    end
-                end
-            end
-
-            # ---- Contract ----
-            # Γ[p,q,r,s] += Σ_{u,v,r1,r2} ρ[u,v,r1,r2] *
-            #     [Σ_w Aa[p,r,u,w]*Aa[q,s,w,v] - δ_{qr}*Aa[p,s,u,v]   (αα)
-            #    + Σ_w Aa[p,r,u,w]*Bb[q,s,w,v]                          (αβ)
-            #    + Σ_w Bb[p,r,u,w]*Aa[q,s,w,v]                          (βα)
-            #    + Σ_w Bb[p,r,u,w]*Bb[q,s,w,v] - δ_{qr}*Bb[p,s,u,v]]  (ββ)
-            n_w = min(n_s, n_t)   # intermediate states for resolution-of-identity
-            for r2 in 1:R2, r1 in 1:R1
-                for v in 1:n_t, u in 1:n_s
-                    ρval = ρ[u, v, r1, r2]
-                    iszero(ρval) && continue
-                    for s_orb in 1:norb_i
-                        for r_orb in 1:norb_i
-                            for q_orb in 1:norb_i
-                                for p_orb in 1:norb_i
-                                    aa_sum = zero(T)
-                                    bb_sum = zero(T)
-                                    ab_sum = zero(T)
-                                    ba_sum = zero(T)
-                                    for w in 1:n_w
-                                        aa_sum += Aa_i[p_orb, r_orb, u, w] * Aa_i[q_orb, s_orb, w, v]
-                                        bb_sum += Bb_i[p_orb, r_orb, u, w] * Bb_i[q_orb, s_orb, w, v]
-                                        ab_sum += Aa_i[p_orb, r_orb, u, w] * Bb_i[q_orb, s_orb, w, v]
-                                        ba_sum += Bb_i[p_orb, r_orb, u, w] * Aa_i[q_orb, s_orb, w, v]
-                                    end
-                                    # δ_{qr} correction for same-spin terms only
-                                    if q_orb == r_orb
-                                        aa_sum -= Aa_i[p_orb, s_orb, u, v]
-                                        bb_sum -= Bb_i[p_orb, s_orb, u, v]
-                                    end
-                                    Γ[off_i+p_orb, off_i+q_orb, off_i+r_orb, off_i+s_orb, r1, r2] +=
-                                        (aa_sum + bb_sum + ab_sum + ba_sum) * ρval
-                                end
-                            end
-                        end
-                    end
-                end  # v, u
-            end  # r2, r1
-
-        end  # ci
-    end  # fock (on-cluster)
-
-
-    # =========================================================
-    # 2. INTER-CLUSTER FOCK-DIAGONAL (I,J,I,J)
-    # p,r ∈ I;  q,s ∈ J;  both clusters Fock-neutral → sign = +1
-    # =========================================================
-    # Γ[off_I+p, off_J+q, off_I+r, off_J+s] +=
-    #   Σ_{matching} C_bra C_ket * Σ_{σ,τ} σσ_I[p,r,sI,tI] * ττ_J[q,s,sJ,tJ]
-
-    for ci in clusters
         ci_idx = ci.idx
         norb_i = length(ci)
         off_i  = orb_offsets[ci_idx]
+        ftrans = (fock[ci_idx], fock[ci_idx])
 
-        for cj in clusters
-            ci_idx == cj.idx && continue
-            cj_idx = cj.idx
-            norb_j = length(cj)
-            off_j  = orb_offsets[cj_idx]
+        haskey(cluster_ops[ci_idx], "Aa")          || continue
+        haskey(cluster_ops[ci_idx]["Aa"], ftrans)   || continue
+        haskey(cluster_ops[ci_idx], "Bb")           || continue
+        haskey(cluster_ops[ci_idx]["Bb"], ftrans)   || continue
 
-            other_k = [k for k in 1:N if k != ci_idx && k != cj_idx]
+        Aa_i = cluster_ops[ci_idx]["Aa"][ftrans]
+        Bb_i = cluster_ops[ci_idx]["Bb"][ftrans]
+        n_s  = size(Aa_i, 2)
+        n_t  = size(Aa_i, 3)
 
-            for (fock, configs_bra) in bra.data
-                haskey(ket.data, fock) || continue
-                configs_ket = ket.data[fock]
+        ρ = zeros(T, n_s, n_t, R1, R2)
 
-                ftrans_i = (fock[ci_idx], fock[ci_idx])
-                ftrans_j = (fock[cj_idx], fock[cj_idx])
+        bra_groups = Dict{Vector{Int16}, Vector{Pair{Int16, MVector{R1,T}}}}()
+        for (config, coeff) in configs_bra
+            key = [config[k] for k in 1:N if k != ci_idx]
+            push!(get!(bra_groups, key, Pair{Int16,MVector{R1,T}}[]),
+                  config[ci_idx] => coeff)
+        end
 
-                ( haskey(cluster_ops[ci_idx], "Aa") &&
-                  haskey(cluster_ops[ci_idx]["Aa"], ftrans_i) &&
-                  haskey(cluster_ops[cj_idx], "Aa") &&
-                  haskey(cluster_ops[cj_idx]["Aa"], ftrans_j) ) || continue
+        ket_groups = Dict{Vector{Int16}, Vector{Pair{Int16, MVector{R2,T}}}}()
+        for (config, coeff) in configs_ket
+            key = [config[k] for k in 1:N if k != ci_idx]
+            push!(get!(ket_groups, key, Pair{Int16,MVector{R2,T}}[]),
+                  config[ci_idx] => coeff)
+        end
 
-                _raw_Aai = cluster_ops[ci_idx]["Aa"][ftrans_i]
-                _raw_Aaj = cluster_ops[cj_idx]["Aa"][ftrans_j]
-                n_si = size(_raw_Aai, 2); n_ti = size(_raw_Aai, 3)
-                n_sj = size(_raw_Aaj, 2); n_tj = size(_raw_Aaj, 3)
-                Aa_i = reshape(_raw_Aai, norb_i, norb_i, n_si, n_ti)
-                Bb_i = reshape(cluster_ops[ci_idx]["Bb"][ftrans_i], norb_i, norb_i, n_si, n_ti)
-                Aa_j = reshape(_raw_Aaj, norb_j, norb_j, n_sj, n_tj)
-                Bb_j = reshape(cluster_ops[cj_idx]["Bb"][ftrans_j], norb_j, norb_j, n_sj, n_tj)
-
-                # Group by all k ≠ I, J
-                bra_by_other = Dict{Vector{Int16},
-                    Vector{Tuple{Int16,Int16,MVector{R1,T}}}}()
-                for (config, coeff) in configs_bra
-                    key = [config[k] for k in other_k]
-                    push!(get!(bra_by_other, key, Tuple{Int16,Int16,MVector{R1,T}}[]),
-                          (config[ci_idx], config[cj_idx], coeff))
-                end
-
-                ket_by_other = Dict{Vector{Int16},
-                    Vector{Tuple{Int16,Int16,MVector{R2,T}}}}()
-                for (config, coeff) in configs_ket
-                    key = [config[k] for k in other_k]
-                    push!(get!(ket_by_other, key, Tuple{Int16,Int16,MVector{R2,T}}[]),
-                          (config[ci_idx], config[cj_idx], coeff))
-                end
-
-                for (key, bra_list) in bra_by_other
-                    haskey(ket_by_other, key) || continue
-                    for (s_i, s_j, c_bra) in bra_list
-                        for (t_i, t_j, c_ket) in ket_by_other[key]
-                            for r2 in 1:R2, r1 in 1:R1
-                                w = c_bra[r1] * c_ket[r2]   # sign = +1 (Fock-neutral)
-                                iszero(w) && continue
-                                # Σ_{σ,τ}: αα + αβ + βα + ββ
-                                for s_orb in 1:norb_j
-                                    for q_orb in 1:norb_j
-                                        for r_orb in 1:norb_i
-                                            for p_orb in 1:norb_i
-                                                aa_ij = Aa_i[p_orb, r_orb, s_i, t_i] * Aa_j[q_orb, s_orb, s_j, t_j]
-                                                ab_ij = Aa_i[p_orb, r_orb, s_i, t_i] * Bb_j[q_orb, s_orb, s_j, t_j]
-                                                ba_ij = Bb_i[p_orb, r_orb, s_i, t_i] * Aa_j[q_orb, s_orb, s_j, t_j]
-                                                bb_ij = Bb_i[p_orb, r_orb, s_i, t_i] * Bb_j[q_orb, s_orb, s_j, t_j]
-                                                Γ[off_i+p_orb, off_j+q_orb, off_i+r_orb, off_j+s_orb, r1, r2] +=
-                                                    (aa_ij + ab_ij + ba_ij + bb_ij) * w
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
+        for (key, bra_list) in bra_groups
+            haskey(ket_groups, key) || continue
+            for (s_i, c_bra) in bra_list
+                for (t_i, c_ket) in ket_groups[key]
+                    for r2 in 1:R2, r1 in 1:R1
+                        ρ[s_i, t_i, r1, r2] += c_bra[r1] * c_ket[r2]
                     end
                 end
+            end
+        end
 
-            end  # fock
-        end  # cj
-    end  # ci (I,J,I,J)
+        Aa_r = reshape(Aa_i, norb_i, norb_i, n_s, n_t)
+        Bb_r = reshape(Bb_i, norb_i, norb_i, n_s, n_t)
 
+        for r2 in 1:R2, r1 in 1:R1
+            for t_i in 1:n_t, s_i in 1:n_s
+                ρval = ρ[s_i, t_i, r1, r2]
+                iszero(ρval) && continue
+                for q in 1:norb_i, p in 1:norb_i
+                    γ_aa_loc[tid][off_i+p, off_i+q, r1, r2] += Aa_r[p, q, s_i, t_i] * ρval
+                    γ_bb_loc[tid][off_i+p, off_i+q, r1, r2] += Bb_r[p, q, s_i, t_i] * ρval
+                end
+            end
+        end
+    end  # on-cluster @threads
 
-    # =========================================================
-    # 3. INTER-CLUSTER CHARGE-TRANSFER (I,I,J,J)
-    # p,q ∈ I (creations);  r,s ∈ J (annihilations)
-    # Signs: αα,ββ → +1;  αβ,βα → (-1)^χ = _rdm_sign(fock_ket,I,J)
-    # =========================================================
-    for ci in clusters
-        ci_idx = ci.idx
-        norb_i = length(ci)
-        off_i  = orb_offsets[ci_idx]
+    # ==========================================================
+    # 2. INTER-CLUSTER — @threads over (ci, cj) pairs
+    # ==========================================================
+    ci_cj_pairs = [(ci, cj) for ci in clusters for cj in clusters
+                   if ci.idx != cj.idx]
 
-        for cj in clusters
-            ci_idx == cj.idx && continue
-            cj_idx = cj.idx
-            norb_j = length(cj)
-            off_j  = orb_offsets[cj_idx]
+    @threads for idx in eachindex(ci_cj_pairs)
+        tid    = Threads.threadid()
+        ci, cj = ci_cj_pairs[idx]
+        ci_idx = ci.idx;  norb_i = length(ci);  off_i = orb_offsets[ci_idx]
+        cj_idx = cj.idx;  norb_j = length(cj);  off_j = orb_offsets[cj_idx]
+        other_k = [k for k in 1:N if k != ci_idx && k != cj_idx]
 
-            other_k = [k for k in 1:N if k != ci_idx && k != cj_idx]
+        for (fock_ket, configs_ket) in ket.data
+            na_i, nb_i = fock_ket[ci_idx]
+            na_j, nb_j = fock_ket[cj_idx]
 
-            for (fock_ket, configs_ket) in ket.data
-                na_i, nb_i = fock_ket[ci_idx]
-                na_j, nb_j = fock_ket[cj_idx]
-                norb_i_max = length(clusters[ci_idx])
-                norb_j_max = length(clusters[cj_idx])
+            # ---- Alpha-alpha: create α at i, annihilate α at j ----
+            if na_j >= 1 && na_i < length(clusters[ci_idx])
+                fock_bra = replace(fock_ket, [ci_idx, cj_idx],
+                                   [(na_i+1, nb_i), (na_j-1, nb_j)])
 
-                # ---- αα: create 2α at I, annihilate 2α at J ----
-                if na_j >= 2 && na_i + 2 <= norb_i_max
-                    fock_bra = replace(fock_ket,
-                                       [ci_idx, cj_idx],
-                                       [(na_i+2, nb_i), (na_j-2, nb_j)])
-                    if haskey(bra.data, fock_bra)
-                        ftrans_i = (fock_bra[ci_idx], fock_ket[ci_idx])  # "AA"
-                        ftrans_j = (fock_bra[cj_idx], fock_ket[cj_idx])  # "aa"
-                        if haskey(cluster_ops[ci_idx], "AA") &&
-                           haskey(cluster_ops[ci_idx]["AA"], ftrans_i) &&
-                           haskey(cluster_ops[cj_idx], "aa") &&
-                           haskey(cluster_ops[cj_idx]["aa"], ftrans_j)
+                if haskey(bra.data, fock_bra)
+                    configs_bra = bra.data[fock_bra]
+                    ftrans_i = (fock_bra[ci_idx], fock_ket[ci_idx])
+                    ftrans_j = (fock_bra[cj_idx], fock_ket[cj_idx])
 
-                            _raw_AAi = cluster_ops[ci_idx]["AA"][ftrans_i]
-                            AA_i = reshape(_raw_AAi, norb_i, norb_i, size(_raw_AAi,2), size(_raw_AAi,3))
-                            _raw_aaj = cluster_ops[cj_idx]["aa"][ftrans_j]
-                            aa_j = reshape(_raw_aaj, norb_j, norb_j, size(_raw_aaj,2), size(_raw_aaj,3))
-                            # sign = +1 for αα
+                    if haskey(cluster_ops[ci_idx], "A") &&
+                       haskey(cluster_ops[ci_idx]["A"], ftrans_i) &&
+                       haskey(cluster_ops[cj_idx], "a") &&
+                       haskey(cluster_ops[cj_idx]["a"], ftrans_j)
 
-                            bra_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R1,T}}}}()
-                            for (config, coeff) in bra.data[fock_bra]
-                                key = [config[k] for k in other_k]
-                                push!(get!(bra_by_other, key, Tuple{Int16,Int16,MVector{R1,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
-                            ket_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R2,T}}}}()
-                            for (config, coeff) in configs_ket
-                                key = [config[k] for k in other_k]
-                                push!(get!(ket_by_other, key, Tuple{Int16,Int16,MVector{R2,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
+                        A_i        = cluster_ops[ci_idx]["A"][ftrans_i]
+                        a_j        = cluster_ops[cj_idx]["a"][ftrans_j]
+                        state_sign = _rdm_sign(fock_ket, ci_idx, cj_idx)
 
-                            for (key, bra_list) in bra_by_other
-                                haskey(ket_by_other, key) || continue
-                                for (s_i, s_j, c_bra) in bra_list
-                                    for (t_i, t_j, c_ket) in ket_by_other[key]
-                                        for r2 in 1:R2, r1 in 1:R1
-                                            w = c_bra[r1] * c_ket[r2]   # sign = +1
-                                            iszero(w) && continue
-                                            for s_orb in 1:norb_j, r_orb in 1:norb_j
-                                                aa_j_val = aa_j[s_orb, r_orb, s_j, t_j]
-                                                iszero(aa_j_val) && continue
-                                                for q_orb in 1:norb_i, p_orb in 1:norb_i
-                                                    Γ[off_i+p_orb, off_i+q_orb, off_j+r_orb, off_j+s_orb, r1, r2] +=
-                                                        AA_i[p_orb, q_orb, s_i, t_i] * aa_j_val * w
-                                                end
+                        bra_by_other = Dict{Vector{Int16},
+                            Vector{Tuple{Int16,Int16,MVector{R1,T}}}}()
+                        for (config, coeff) in configs_bra
+                            key = [config[k] for k in other_k]
+                            push!(get!(bra_by_other, key,
+                                       Tuple{Int16,Int16,MVector{R1,T}}[]),
+                                  (config[ci_idx], config[cj_idx], coeff))
+                        end
+
+                        ket_by_other = Dict{Vector{Int16},
+                            Vector{Tuple{Int16,Int16,MVector{R2,T}}}}()
+                        for (config, coeff) in configs_ket
+                            key = [config[k] for k in other_k]
+                            push!(get!(ket_by_other, key,
+                                       Tuple{Int16,Int16,MVector{R2,T}}[]),
+                                  (config[ci_idx], config[cj_idx], coeff))
+                        end
+
+                        for (key, bra_list) in bra_by_other
+                            haskey(ket_by_other, key) || continue
+                            for (s_i, s_j, c_bra) in bra_list
+                                for (t_i, t_j, c_ket) in ket_by_other[key]
+                                    for r2 in 1:R2, r1 in 1:R1
+                                        cp = state_sign * c_bra[r1] * c_ket[r2]
+                                        iszero(cp) && continue
+                                        for q in 1:norb_j
+                                            aj = a_j[q, s_j, t_j]
+                                            iszero(aj) && continue
+                                            for p in 1:norb_i
+                                                γ_aa_loc[tid][off_i+p, off_j+q, r1, r2] +=
+                                                    A_i[p, s_i, t_i] * aj * cp
                                             end
                                         end
                                     end
@@ -1346,53 +1219,59 @@ function compute_2rdm(bra::TPSCIstate{T,N,R1},
                             end
                         end
                     end
-                end  # αα CT
+                end
+            end  # alpha-alpha
 
-                # ---- ββ: create 2β at I, annihilate 2β at J ----
-                if nb_j >= 2 && nb_i + 2 <= norb_i_max
-                    fock_bra = replace(fock_ket,
-                                       [ci_idx, cj_idx],
-                                       [(na_i, nb_i+2), (na_j, nb_j-2)])
-                    if haskey(bra.data, fock_bra)
-                        ftrans_i = (fock_bra[ci_idx], fock_ket[ci_idx])  # "BB"
-                        ftrans_j = (fock_bra[cj_idx], fock_ket[cj_idx])  # "bb"
-                        if haskey(cluster_ops[ci_idx], "BB") &&
-                           haskey(cluster_ops[ci_idx]["BB"], ftrans_i) &&
-                           haskey(cluster_ops[cj_idx], "bb") &&
-                           haskey(cluster_ops[cj_idx]["bb"], ftrans_j)
+            # ---- Beta-beta: create β at i, annihilate β at j ----
+            if nb_j >= 1 && nb_i < length(clusters[ci_idx])
+                fock_bra = replace(fock_ket, [ci_idx, cj_idx],
+                                   [(na_i, nb_i+1), (na_j, nb_j-1)])
 
-                            _raw_BBi = cluster_ops[ci_idx]["BB"][ftrans_i]
-                            BB_i = reshape(_raw_BBi, norb_i, norb_i, size(_raw_BBi,2), size(_raw_BBi,3))
-                            _raw_bbj = cluster_ops[cj_idx]["bb"][ftrans_j]
-                            bb_j = reshape(_raw_bbj, norb_j, norb_j, size(_raw_bbj,2), size(_raw_bbj,3))
+                if haskey(bra.data, fock_bra)
+                    configs_bra = bra.data[fock_bra]
+                    ftrans_i = (fock_bra[ci_idx], fock_ket[ci_idx])
+                    ftrans_j = (fock_bra[cj_idx], fock_ket[cj_idx])
 
-                            bra_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R1,T}}}}()
-                            for (config, coeff) in bra.data[fock_bra]
-                                key = [config[k] for k in other_k]
-                                push!(get!(bra_by_other, key, Tuple{Int16,Int16,MVector{R1,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
-                            ket_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R2,T}}}}()
-                            for (config, coeff) in configs_ket
-                                key = [config[k] for k in other_k]
-                                push!(get!(ket_by_other, key, Tuple{Int16,Int16,MVector{R2,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
+                    if haskey(cluster_ops[ci_idx], "B") &&
+                       haskey(cluster_ops[ci_idx]["B"], ftrans_i) &&
+                       haskey(cluster_ops[cj_idx], "b") &&
+                       haskey(cluster_ops[cj_idx]["b"], ftrans_j)
 
-                            for (key, bra_list) in bra_by_other
-                                haskey(ket_by_other, key) || continue
-                                for (s_i, s_j, c_bra) in bra_list
-                                    for (t_i, t_j, c_ket) in ket_by_other[key]
-                                        for r2 in 1:R2, r1 in 1:R1
-                                            w = c_bra[r1] * c_ket[r2]   # sign = +1
-                                            iszero(w) && continue
-                                            for s_orb in 1:norb_j, r_orb in 1:norb_j
-                                                bb_j_val = bb_j[s_orb, r_orb, s_j, t_j]
-                                                iszero(bb_j_val) && continue
-                                                for q_orb in 1:norb_i, p_orb in 1:norb_i
-                                                    Γ[off_i+p_orb, off_i+q_orb, off_j+r_orb, off_j+s_orb, r1, r2] +=
-                                                        BB_i[p_orb, q_orb, s_i, t_i] * bb_j_val * w
-                                                end
+                        B_i        = cluster_ops[ci_idx]["B"][ftrans_i]
+                        b_j        = cluster_ops[cj_idx]["b"][ftrans_j]
+                        state_sign = _rdm_sign(fock_ket, ci_idx, cj_idx)
+
+                        bra_by_other = Dict{Vector{Int16},
+                            Vector{Tuple{Int16,Int16,MVector{R1,T}}}}()
+                        for (config, coeff) in configs_bra
+                            key = [config[k] for k in other_k]
+                            push!(get!(bra_by_other, key,
+                                       Tuple{Int16,Int16,MVector{R1,T}}[]),
+                                  (config[ci_idx], config[cj_idx], coeff))
+                        end
+
+                        ket_by_other = Dict{Vector{Int16},
+                            Vector{Tuple{Int16,Int16,MVector{R2,T}}}}()
+                        for (config, coeff) in configs_ket
+                            key = [config[k] for k in other_k]
+                            push!(get!(ket_by_other, key,
+                                       Tuple{Int16,Int16,MVector{R2,T}}[]),
+                                  (config[ci_idx], config[cj_idx], coeff))
+                        end
+
+                        for (key, bra_list) in bra_by_other
+                            haskey(ket_by_other, key) || continue
+                            for (s_i, s_j, c_bra) in bra_list
+                                for (t_i, t_j, c_ket) in ket_by_other[key]
+                                    for r2 in 1:R2, r1 in 1:R1
+                                        cp = state_sign * c_bra[r1] * c_ket[r2]
+                                        iszero(cp) && continue
+                                        for q in 1:norb_j
+                                            bj = b_j[q, s_j, t_j]
+                                            iszero(bj) && continue
+                                            for p in 1:norb_i
+                                                γ_bb_loc[tid][off_i+p, off_j+q, r1, r2] +=
+                                                    B_i[p, s_i, t_i] * bj * cp
                                             end
                                         end
                                     end
@@ -1400,155 +1279,43 @@ function compute_2rdm(bra::TPSCIstate{T,N,R1},
                             end
                         end
                     end
-                end  # ββ CT
+                end
+            end  # beta-beta
 
-                # ---- αβ: create α+β at I, annihilate α+β at J ----
-                # sign = (-1)^χ = _rdm_sign(fock_ket, I, J)
-                if na_j >= 1 && nb_j >= 1 && na_i + 1 <= norb_i_max && nb_i + 1 <= norb_i_max
-                    fock_bra = replace(fock_ket,
-                                       [ci_idx, cj_idx],
-                                       [(na_i+1, nb_i+1), (na_j-1, nb_j-1)])
-                    if haskey(bra.data, fock_bra)
-                        ftrans_i = (fock_bra[ci_idx], fock_ket[ci_idx])  # "AB"
-                        ftrans_j = (fock_bra[cj_idx], fock_ket[cj_idx])  # "ba"
-                        if haskey(cluster_ops[ci_idx], "AB") &&
-                           haskey(cluster_ops[ci_idx]["AB"], ftrans_i) &&
-                           haskey(cluster_ops[cj_idx], "ba") &&
-                           haskey(cluster_ops[cj_idx]["ba"], ftrans_j)
+        end  # fock_ket loop
+    end  # inter-cluster @threads
 
-                            _raw_ABi = cluster_ops[ci_idx]["AB"][ftrans_i]
-                            AB_i = reshape(_raw_ABi, norb_i, norb_i, size(_raw_ABi,2), size(_raw_ABi,3))
-                            _raw_baj = cluster_ops[cj_idx]["ba"][ftrans_j]
-                            ba_j = reshape(_raw_baj, norb_j, norb_j, size(_raw_baj,2), size(_raw_baj,3))
-                            sign_ab = _rdm_sign(fock_ket, ci_idx, cj_idx)
-
-                            bra_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R1,T}}}}()
-                            for (config, coeff) in bra.data[fock_bra]
-                                key = [config[k] for k in other_k]
-                                push!(get!(bra_by_other, key, Tuple{Int16,Int16,MVector{R1,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
-                            ket_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R2,T}}}}()
-                            for (config, coeff) in configs_ket
-                                key = [config[k] for k in other_k]
-                                push!(get!(ket_by_other, key, Tuple{Int16,Int16,MVector{R2,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
-
-                            for (key, bra_list) in bra_by_other
-                                haskey(ket_by_other, key) || continue
-                                for (s_i, s_j, c_bra) in bra_list
-                                    for (t_i, t_j, c_ket) in ket_by_other[key]
-                                        for r2 in 1:R2, r1 in 1:R1
-                                            w = sign_ab * c_bra[r1] * c_ket[r2]
-                                            iszero(w) && continue
-                                            for s_orb in 1:norb_j, r_orb in 1:norb_j
-                                                ba_j_val = ba_j[s_orb, r_orb, s_j, t_j]
-                                                iszero(ba_j_val) && continue
-                                                for q_orb in 1:norb_i, p_orb in 1:norb_i
-                                                    Γ[off_i+p_orb, off_i+q_orb, off_j+r_orb, off_j+s_orb, r1, r2] +=
-                                                        AB_i[p_orb, q_orb, s_i, t_i] * ba_j_val * w
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end  # αβ CT
-
-                # ---- βα: create β+α at I, annihilate β+α at J ----
-                # Same Fock change as αβ but different operators; sign = (-1)^χ
-                if na_j >= 1 && nb_j >= 1 && na_i + 1 <= norb_i_max && nb_i + 1 <= norb_i_max
-                    fock_bra = replace(fock_ket,
-                                       [ci_idx, cj_idx],
-                                       [(na_i+1, nb_i+1), (na_j-1, nb_j-1)])
-                    if haskey(bra.data, fock_bra)
-                        ftrans_i = (fock_bra[ci_idx], fock_ket[ci_idx])  # "BA"
-                        ftrans_j = (fock_bra[cj_idx], fock_ket[cj_idx])  # "ab"
-                        if haskey(cluster_ops[ci_idx], "BA") &&
-                           haskey(cluster_ops[ci_idx]["BA"], ftrans_i) &&
-                           haskey(cluster_ops[cj_idx], "ab") &&
-                           haskey(cluster_ops[cj_idx]["ab"], ftrans_j)
-
-                            _raw_BAi = cluster_ops[ci_idx]["BA"][ftrans_i]
-                            BA_i = reshape(_raw_BAi, norb_i, norb_i, size(_raw_BAi,2), size(_raw_BAi,3))
-                            _raw_abj = cluster_ops[cj_idx]["ab"][ftrans_j]
-                            ab_j = reshape(_raw_abj, norb_j, norb_j, size(_raw_abj,2), size(_raw_abj,3))
-                            sign_ba = _rdm_sign(fock_ket, ci_idx, cj_idx)
-
-                            bra_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R1,T}}}}()
-                            for (config, coeff) in bra.data[fock_bra]
-                                key = [config[k] for k in other_k]
-                                push!(get!(bra_by_other, key, Tuple{Int16,Int16,MVector{R1,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
-                            ket_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R2,T}}}}()
-                            for (config, coeff) in configs_ket
-                                key = [config[k] for k in other_k]
-                                push!(get!(ket_by_other, key, Tuple{Int16,Int16,MVector{R2,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
-
-                            for (key, bra_list) in bra_by_other
-                                haskey(ket_by_other, key) || continue
-                                for (s_i, s_j, c_bra) in bra_list
-                                    for (t_i, t_j, c_ket) in ket_by_other[key]
-                                        for r2 in 1:R2, r1 in 1:R1
-                                            w = sign_ba * c_bra[r1] * c_ket[r2]
-                                            iszero(w) && continue
-                                            for s_orb in 1:norb_j, r_orb in 1:norb_j
-                                                ab_j_val = ab_j[s_orb, r_orb, s_j, t_j]
-                                                iszero(ab_j_val) && continue
-                                                for q_orb in 1:norb_i, p_orb in 1:norb_i
-                                                    Γ[off_i+p_orb, off_i+q_orb, off_j+r_orb, off_j+s_orb, r1, r2] +=
-                                                        BA_i[p_orb, q_orb, s_i, t_i] * ab_j_val * w
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end  # βα CT
-
-            end  # fock_ket
-        end  # cj
-    end  # ci (I,I,J,J)
-
-    return Γ
+    # Sum thread-local arrays
+    γ_aa = sum(γ_aa_loc)
+    γ_bb = sum(γ_bb_loc)
+    return γ_aa, γ_bb
 end
 
 
 """
-    compute_2rdm(psi::TPSCIstate, cluster_ops)
+    compute_1rdm_threaded(psi, cluster_ops)
 
-Single-state 2-RDM. Returns Γ of shape (norb, norb, norb, norb, R, R).
+Single-state parallel 1-RDM. Returns (γ_aa, γ_bb) of shape (norb, norb, R, R).
 """
-function compute_2rdm(psi::TPSCIstate{T,N,R},
-                      cluster_ops::Vector{ClusterOps{T}}) where {T,N,R}
-    return compute_2rdm(psi, psi, cluster_ops)
+function compute_1rdm_threaded(psi::TPSCIstate{T,N,R},
+                                cluster_ops::Vector{ClusterOps{T}}) where {T,N,R}
+    return compute_1rdm_threaded(psi, psi, cluster_ops)
 end
 
 
 # ---------------------------------------------------------------------------
-# 2-RDM  (BLAS-accelerated)
+# Parallel spin-flip 1-RDM
 # ---------------------------------------------------------------------------
 """
-    compute_2rdm_blas(bra::TPSCIstate, ket::TPSCIstate, cluster_ops)
+    compute_1rdm_sf_threaded(bra, ket, cluster_ops)
 
-BLAS-accelerated version of `compute_2rdm`.  Produces the same result but
-replaces the on-cluster (I,I,I,I) inner w-loop with a single BLAS `mul!`
-(dgemm) per (u,v) pair, giving a large speedup for clusters with many
-intermediate states.
-
-    Γ[p,q,r,s, r1,r2] = Σ_{σ,τ} <bra_{r1}|p†_σ q†_τ s_τ r_σ|ket_{r2}>
+Multi-threaded version of `compute_1rdm_sf`. Returns (γ_ab, γ_ba), each of
+shape (norb, norb, R1, R2). Results are numerically identical to the serial
+version within floating-point rounding.
 """
-function compute_2rdm_blas(bra::TPSCIstate{T,N,R1},
-                           ket::TPSCIstate{T,N,R2},
-                           cluster_ops::Vector{ClusterOps{T}}) where {T,N,R1,R2}
+function compute_1rdm_sf_threaded(bra::TPSCIstate{T,N,R1},
+                                   ket::TPSCIstate{T,N,R2},
+                                   cluster_ops::Vector{ClusterOps{T}}) where {T,N,R1,R2}
 
     clusters = bra.clusters
     norb     = sum(length(c) for c in clusters)
@@ -1558,197 +1325,203 @@ function compute_2rdm_blas(bra::TPSCIstate{T,N,R1},
         orb_offsets[i] = orb_offsets[i-1] + length(clusters[i-1])
     end
 
-    Γ = zeros(T, norb, norb, norb, norb, R1, R2)
+    nthreads  = Threads.nthreads()
+    γ_ab_loc  = [zeros(T, norb, norb, R1, R2) for _ in 1:nthreads]
+    γ_ba_loc  = [zeros(T, norb, norb, R1, R2) for _ in 1:nthreads]
 
-    # =========================================================
-    # 1. ON-CLUSTER (I,I,I,I)  — BLAS-accelerated
-    # =========================================================
-    # Γ[p,q,r,s] += Σ_{u,v} ρ[u,v] *
-    #   ( Σ_w (Aa+Bb)[p,r,u,w]*(Aa+Bb)[q,s,w,v]
-    #     - δ_{qr}*(Aa+Bb)[p,s,u,v] )
-    #
-    # The w-sum is a matrix multiply:
-    #   prod[pr, qs] = L[pr, w] * R[qs, w]^T
-    # where L = (Aa+Bb) reshaped, giving indices (p,r,q,s).
-    # We permute (p,r,q,s) → (p,q,r,s) when accumulating into Γ.
+    # ==========================================================
+    # 1. ON-CLUSTER SPIN-FLIP — @threads over (fock_ket, ci) pairs
+    # ==========================================================
+    fock_ket_list    = collect(keys(ket.data))
+    on_cluster_pairs = [(fock_ket, ci) for fock_ket in fock_ket_list for ci in clusters]
 
-    for (fock, configs_bra) in bra.data
-        haskey(ket.data, fock) || continue
-        configs_ket = ket.data[fock]
+    @threads for idx in eachindex(on_cluster_pairs)
+        tid           = Threads.threadid()
+        fock_ket, ci  = on_cluster_pairs[idx]
+        configs_ket   = ket.data[fock_ket]
+        ci_idx        = ci.idx
+        norb_i        = length(ci)
+        off_i         = orb_offsets[ci_idx]
+        na_i, nb_i    = fock_ket[ci_idx]
 
-        for ci in clusters
-            ci_idx = ci.idx
-            norb_i = length(ci)
-            off_i  = orb_offsets[ci_idx]
-            ftrans = (fock[ci_idx], fock[ci_idx])
+        # ---- α→β on-cluster: create α, annihilate β at cluster i ----
+        if nb_i >= 1 && na_i < norb_i
+            fock_bra = replace(fock_ket, [ci_idx], [(na_i+1, nb_i-1)])
 
-            haskey(cluster_ops[ci_idx], "Aa") || continue
-            haskey(cluster_ops[ci_idx]["Aa"], ftrans) || continue
-            haskey(cluster_ops[ci_idx], "Bb") || continue
-            haskey(cluster_ops[ci_idx]["Bb"], ftrans) || continue
+            if haskey(bra.data, fock_bra)
+                configs_bra = bra.data[fock_bra]
+                ftrans = (fock_bra[ci_idx], fock_ket[ci_idx])
 
-            _raw_Aa = cluster_ops[ci_idx]["Aa"][ftrans]
-            n_s = size(_raw_Aa, 2); n_t = size(_raw_Aa, 3)
-            Aa_i = reshape(_raw_Aa, norb_i, norb_i, n_s, n_t)
-            Bb_i = reshape(cluster_ops[ci_idx]["Bb"][ftrans], norb_i, norb_i, n_s, n_t)
+                if haskey(cluster_ops[ci_idx], "Ab") &&
+                   haskey(cluster_ops[ci_idx]["Ab"], ftrans)
 
-            # ---- Build cluster RDM ρ_I[s,t,r1,r2] ----
-            ρ = zeros(T, n_s, n_t, R1, R2)
-            bra_groups = Dict{Vector{Int16}, Vector{Pair{Int16, MVector{R1,T}}}}()
-            for (config, coeff) in configs_bra
-                key = [config[k] for k in 1:N if k != ci_idx]
-                push!(get!(bra_groups, key, Pair{Int16,MVector{R1,T}}[]),
-                      config[ci_idx] => coeff)
-            end
-            ket_groups = Dict{Vector{Int16}, Vector{Pair{Int16, MVector{R2,T}}}}()
-            for (config, coeff) in configs_ket
-                key = [config[k] for k in 1:N if k != ci_idx]
-                push!(get!(ket_groups, key, Pair{Int16,MVector{R2,T}}[]),
-                      config[ci_idx] => coeff)
-            end
-            for (key, bra_list) in bra_groups
-                haskey(ket_groups, key) || continue
-                for (s_i, c_bra) in bra_list
-                    for (t_i, c_ket) in ket_groups[key]
-                        for r2 in 1:R2, r1 in 1:R1
-                            ρ[s_i, t_i, r1, r2] += c_bra[r1] * c_ket[r2]
+                    Ab_i = cluster_ops[ci_idx]["Ab"][ftrans]
+                    n_s  = size(Ab_i, 2)
+                    n_t  = size(Ab_i, 3)
+                    Ab_r = reshape(Ab_i, norb_i, norb_i, n_s, n_t)
+                    ρ    = zeros(T, n_s, n_t, R1, R2)
+
+                    bra_groups = Dict{Vector{Int16}, Vector{Pair{Int16, MVector{R1,T}}}}()
+                    for (config, coeff) in configs_bra
+                        key = [config[k] for k in 1:N if k != ci_idx]
+                        push!(get!(bra_groups, key, Pair{Int16,MVector{R1,T}}[]),
+                              config[ci_idx] => coeff)
+                    end
+                    ket_groups = Dict{Vector{Int16}, Vector{Pair{Int16, MVector{R2,T}}}}()
+                    for (config, coeff) in configs_ket
+                        key = [config[k] for k in 1:N if k != ci_idx]
+                        push!(get!(ket_groups, key, Pair{Int16,MVector{R2,T}}[]),
+                              config[ci_idx] => coeff)
+                    end
+
+                    for (key, bra_list) in bra_groups
+                        haskey(ket_groups, key) || continue
+                        for (s_i, c_bra) in bra_list
+                            for (t_i, c_ket) in ket_groups[key]
+                                for r2 in 1:R2, r1 in 1:R1
+                                    ρ[s_i, t_i, r1, r2] += c_bra[r1] * c_ket[r2]
+                                end
+                            end
+                        end
+                    end
+
+                    for r2 in 1:R2, r1 in 1:R1
+                        for t_i in 1:n_t, s_i in 1:n_s
+                            ρval = ρ[s_i, t_i, r1, r2]
+                            iszero(ρval) && continue
+                            for q in 1:norb_i, p in 1:norb_i
+                                γ_ab_loc[tid][off_i+p, off_i+q, r1, r2] +=
+                                    Ab_r[p, q, s_i, t_i] * ρval
+                            end
                         end
                     end
                 end
             end
+        end  # α→β on-cluster
 
-            # ---- BLAS-accelerated contraction ----
-            norb2 = norb_i * norb_i
-            n_w = min(n_s, n_t)
+        # ---- β→α on-cluster: create β, annihilate α at cluster i ----
+        if na_i >= 1 && nb_i < norb_i
+            fock_bra = replace(fock_ket, [ci_idx], [(na_i-1, nb_i+1)])
 
-            # Precompute spin-summed operator: Sum = Aa + Bb
-            Sum_mat = reshape(Aa_i .+ Bb_i, norb2, n_s, n_t)
+            if haskey(bra.data, fock_bra)
+                configs_bra = bra.data[fock_bra]
+                ftrans = (fock_bra[ci_idx], fock_ket[ci_idx])
 
-            # Buffers
-            L_buf    = zeros(T, norb2, n_w)
-            prod_mat = zeros(T, norb2, norb2)
-            Γ_block  = zeros(T, norb_i, norb_i, norb_i, norb_i)
+                if haskey(cluster_ops[ci_idx], "Ba") &&
+                   haskey(cluster_ops[ci_idx]["Ba"], ftrans)
 
-            for r2 in 1:R2, r1 in 1:R1
-                fill!(Γ_block, zero(T))
-                for v in 1:n_t, u in 1:n_s
-                    ρval = ρ[u, v, r1, r2]
-                    iszero(ρval) && continue
+                    Ba_i = cluster_ops[ci_idx]["Ba"][ftrans]
+                    n_s  = size(Ba_i, 2)
+                    n_t  = size(Ba_i, 3)
+                    Ba_r = reshape(Ba_i, norb_i, norb_i, n_s, n_t)
+                    ρ    = zeros(T, n_s, n_t, R1, R2)
 
-                    # L[pr, w] = Sum[pr, u, w]  (non-contiguous in w → copy)
-                    @inbounds for w in 1:n_w, pr in 1:norb2
-                        L_buf[pr, w] = Sum_mat[pr, u, w]
+                    bra_groups = Dict{Vector{Int16}, Vector{Pair{Int16, MVector{R1,T}}}}()
+                    for (config, coeff) in configs_bra
+                        key = [config[k] for k in 1:N if k != ci_idx]
+                        push!(get!(bra_groups, key, Pair{Int16,MVector{R1,T}}[]),
+                              config[ci_idx] => coeff)
+                    end
+                    ket_groups = Dict{Vector{Int16}, Vector{Pair{Int16, MVector{R2,T}}}}()
+                    for (config, coeff) in configs_ket
+                        key = [config[k] for k in 1:N if k != ci_idx]
+                        push!(get!(ket_groups, key, Pair{Int16,MVector{R2,T}}[]),
+                              config[ci_idx] => coeff)
                     end
 
-                    # R = Sum[:, 1:n_w, v]  (contiguous slice — n_w ≤ n_s)
-                    R = @view Sum_mat[:, 1:n_w, v]
-
-                    # BLAS gemm: prod[pr, qs] = Σ_w L[pr,w] * R[qs,w]
-                    mul!(prod_mat, L_buf, R')
-
-                    # prod_4d[p,r,q,s] = prod_mat reshaped
-                    prod_4d = reshape(prod_mat, norb_i, norb_i, norb_i, norb_i)
-
-                    # δ_{qr} correction: in (p,r,q,s) layout, q==r means dim3==dim2
-                    # subtract (Aa+Bb)[p,s,u,v] = Sum_mat[p+(s-1)*norb_i, u, v]
-                    @inbounds for s_orb in 1:norb_i, q_orb in 1:norb_i, p_orb in 1:norb_i
-                        prod_4d[p_orb, q_orb, q_orb, s_orb] -=
-                            Sum_mat[p_orb + (s_orb - 1) * norb_i, u, v]
+                    for (key, bra_list) in bra_groups
+                        haskey(ket_groups, key) || continue
+                        for (s_i, c_bra) in bra_list
+                            for (t_i, c_ket) in ket_groups[key]
+                                for r2 in 1:R2, r1 in 1:R1
+                                    ρ[s_i, t_i, r1, r2] += c_bra[r1] * c_ket[r2]
+                                end
+                            end
+                        end
                     end
 
-                    # Accumulate with permutation (p,r,q,s) → (p,q,r,s)
-                    @inbounds for s_orb in 1:norb_i, r_orb in 1:norb_i,
-                                  q_orb in 1:norb_i, p_orb in 1:norb_i
-                        Γ_block[p_orb, q_orb, r_orb, s_orb] +=
-                            ρval * prod_4d[p_orb, r_orb, q_orb, s_orb]
+                    for r2 in 1:R2, r1 in 1:R1
+                        for t_i in 1:n_t, s_i in 1:n_s
+                            ρval = ρ[s_i, t_i, r1, r2]
+                            iszero(ρval) && continue
+                            for q in 1:norb_i, p in 1:norb_i
+                                γ_ba_loc[tid][off_i+p, off_i+q, r1, r2] +=
+                                    Ba_r[p, q, s_i, t_i] * ρval
+                            end
+                        end
                     end
-                end  # v, u
-
-                # Scatter block to global Γ
-                @inbounds for s_orb in 1:norb_i, r_orb in 1:norb_i,
-                              q_orb in 1:norb_i, p_orb in 1:norb_i
-                    Γ[off_i+p_orb, off_i+q_orb, off_i+r_orb, off_i+s_orb, r1, r2] +=
-                        Γ_block[p_orb, q_orb, r_orb, s_orb]
                 end
-            end  # r2, r1
+            end
+        end  # β→α on-cluster
 
-        end  # ci
-    end  # fock (on-cluster)
+    end  # on-cluster @threads
 
+    # ==========================================================
+    # 2. INTER-CLUSTER SPIN-FLIP — @threads over (ci, cj) pairs
+    # ==========================================================
+    ci_cj_pairs = [(ci, cj) for ci in clusters for cj in clusters
+                   if ci.idx != cj.idx]
 
-    # =========================================================
-    # 2. INTER-CLUSTER FOCK-DIAGONAL (I,J,I,J)
-    # p,r ∈ I;  q,s ∈ J;  both clusters Fock-neutral → sign = +1
-    # =========================================================
-    for ci in clusters
-        ci_idx = ci.idx
-        norb_i = length(ci)
-        off_i  = orb_offsets[ci_idx]
+    @threads for idx in eachindex(ci_cj_pairs)
+        tid    = Threads.threadid()
+        ci, cj = ci_cj_pairs[idx]
+        ci_idx = ci.idx;  norb_i = length(ci);  off_i = orb_offsets[ci_idx]
+        cj_idx = cj.idx;  norb_j = length(cj);  off_j = orb_offsets[cj_idx]
+        other_k = [k for k in 1:N if k != ci_idx && k != cj_idx]
 
-        for cj in clusters
-            ci_idx == cj.idx && continue
-            cj_idx = cj.idx
-            norb_j = length(cj)
-            off_j  = orb_offsets[cj_idx]
+        for (fock_ket, configs_ket) in ket.data
+            na_i, nb_i = fock_ket[ci_idx]
+            na_j, nb_j = fock_ket[cj_idx]
 
-            other_k = [k for k in 1:N if k != ci_idx && k != cj_idx]
+            # ---- α→β inter-cluster: create α at i, annihilate β at j ----
+            if na_i < length(clusters[ci_idx]) && nb_j >= 1
+                fock_bra = replace(fock_ket, [ci_idx, cj_idx],
+                                   [(na_i+1, nb_i), (na_j, nb_j-1)])
 
-            for (fock, configs_bra) in bra.data
-                haskey(ket.data, fock) || continue
-                configs_ket = ket.data[fock]
+                if haskey(bra.data, fock_bra)
+                    configs_bra = bra.data[fock_bra]
+                    ftrans_i = (fock_bra[ci_idx], fock_ket[ci_idx])
+                    ftrans_j = (fock_bra[cj_idx], fock_ket[cj_idx])
 
-                ftrans_i = (fock[ci_idx], fock[ci_idx])
-                ftrans_j = (fock[cj_idx], fock[cj_idx])
+                    if haskey(cluster_ops[ci_idx], "A") &&
+                       haskey(cluster_ops[ci_idx]["A"], ftrans_i) &&
+                       haskey(cluster_ops[cj_idx], "b") &&
+                       haskey(cluster_ops[cj_idx]["b"], ftrans_j)
 
-                ( haskey(cluster_ops[ci_idx], "Aa") &&
-                  haskey(cluster_ops[ci_idx]["Aa"], ftrans_i) &&
-                  haskey(cluster_ops[cj_idx], "Aa") &&
-                  haskey(cluster_ops[cj_idx]["Aa"], ftrans_j) ) || continue
+                        A_i        = cluster_ops[ci_idx]["A"][ftrans_i]
+                        b_j        = cluster_ops[cj_idx]["b"][ftrans_j]
+                        state_sign = _rdm_sign(fock_ket, ci_idx, cj_idx)
 
-                _raw_Aai = cluster_ops[ci_idx]["Aa"][ftrans_i]
-                _raw_Aaj = cluster_ops[cj_idx]["Aa"][ftrans_j]
-                n_si = size(_raw_Aai, 2); n_ti = size(_raw_Aai, 3)
-                n_sj = size(_raw_Aaj, 2); n_tj = size(_raw_Aaj, 3)
-                Aa_i = reshape(_raw_Aai, norb_i, norb_i, n_si, n_ti)
-                Bb_i = reshape(cluster_ops[ci_idx]["Bb"][ftrans_i], norb_i, norb_i, n_si, n_ti)
-                Aa_j = reshape(_raw_Aaj, norb_j, norb_j, n_sj, n_tj)
-                Bb_j = reshape(cluster_ops[cj_idx]["Bb"][ftrans_j], norb_j, norb_j, n_sj, n_tj)
+                        bra_by_other = Dict{Vector{Int16},
+                            Vector{Tuple{Int16,Int16,MVector{R1,T}}}}()
+                        for (config, coeff) in configs_bra
+                            key = [config[k] for k in other_k]
+                            push!(get!(bra_by_other, key,
+                                       Tuple{Int16,Int16,MVector{R1,T}}[]),
+                                  (config[ci_idx], config[cj_idx], coeff))
+                        end
+                        ket_by_other = Dict{Vector{Int16},
+                            Vector{Tuple{Int16,Int16,MVector{R2,T}}}}()
+                        for (config, coeff) in configs_ket
+                            key = [config[k] for k in other_k]
+                            push!(get!(ket_by_other, key,
+                                       Tuple{Int16,Int16,MVector{R2,T}}[]),
+                                  (config[ci_idx], config[cj_idx], coeff))
+                        end
 
-                # Group by all k ≠ I, J
-                bra_by_other = Dict{Vector{Int16},
-                    Vector{Tuple{Int16,Int16,MVector{R1,T}}}}()
-                for (config, coeff) in configs_bra
-                    key = [config[k] for k in other_k]
-                    push!(get!(bra_by_other, key, Tuple{Int16,Int16,MVector{R1,T}}[]),
-                          (config[ci_idx], config[cj_idx], coeff))
-                end
-
-                ket_by_other = Dict{Vector{Int16},
-                    Vector{Tuple{Int16,Int16,MVector{R2,T}}}}()
-                for (config, coeff) in configs_ket
-                    key = [config[k] for k in other_k]
-                    push!(get!(ket_by_other, key, Tuple{Int16,Int16,MVector{R2,T}}[]),
-                          (config[ci_idx], config[cj_idx], coeff))
-                end
-
-                for (key, bra_list) in bra_by_other
-                    haskey(ket_by_other, key) || continue
-                    for (s_i, s_j, c_bra) in bra_list
-                        for (t_i, t_j, c_ket) in ket_by_other[key]
-                            for r2 in 1:R2, r1 in 1:R1
-                                w = c_bra[r1] * c_ket[r2]   # sign = +1 (Fock-neutral)
-                                iszero(w) && continue
-                                # Σ_{σ,τ}: αα + αβ + βα + ββ
-                                for s_orb in 1:norb_j
-                                    for q_orb in 1:norb_j
-                                        for r_orb in 1:norb_i
-                                            for p_orb in 1:norb_i
-                                                aa_ij = Aa_i[p_orb, r_orb, s_i, t_i] * Aa_j[q_orb, s_orb, s_j, t_j]
-                                                ab_ij = Aa_i[p_orb, r_orb, s_i, t_i] * Bb_j[q_orb, s_orb, s_j, t_j]
-                                                ba_ij = Bb_i[p_orb, r_orb, s_i, t_i] * Aa_j[q_orb, s_orb, s_j, t_j]
-                                                bb_ij = Bb_i[p_orb, r_orb, s_i, t_i] * Bb_j[q_orb, s_orb, s_j, t_j]
-                                                Γ[off_i+p_orb, off_j+q_orb, off_i+r_orb, off_j+s_orb, r1, r2] +=
-                                                    (aa_ij + ab_ij + ba_ij + bb_ij) * w
+                        for (key, bra_list) in bra_by_other
+                            haskey(ket_by_other, key) || continue
+                            for (s_i, s_j, c_bra) in bra_list
+                                for (t_i, t_j, c_ket) in ket_by_other[key]
+                                    for r2 in 1:R2, r1 in 1:R1
+                                        cp = state_sign * c_bra[r1] * c_ket[r2]
+                                        iszero(cp) && continue
+                                        for q in 1:norb_j
+                                            bj = b_j[q, s_j, t_j]
+                                            iszero(bj) && continue
+                                            for p in 1:norb_i
+                                                γ_ab_loc[tid][off_i+p, off_j+q, r1, r2] +=
+                                                    A_i[p, s_i, t_i] * bj * cp
                                             end
                                         end
                                     end
@@ -1757,81 +1530,57 @@ function compute_2rdm_blas(bra::TPSCIstate{T,N,R1},
                         end
                     end
                 end
+            end  # α→β inter
 
-            end  # fock
-        end  # cj
-    end  # ci (I,J,I,J)
+            # ---- β→α inter-cluster: create β at i, annihilate α at j ----
+            if nb_i < length(clusters[ci_idx]) && na_j >= 1
+                fock_bra = replace(fock_ket, [ci_idx, cj_idx],
+                                   [(na_i, nb_i+1), (na_j-1, nb_j)])
 
+                if haskey(bra.data, fock_bra)
+                    configs_bra = bra.data[fock_bra]
+                    ftrans_i = (fock_bra[ci_idx], fock_ket[ci_idx])
+                    ftrans_j = (fock_bra[cj_idx], fock_ket[cj_idx])
 
-    # =========================================================
-    # 3. INTER-CLUSTER CHARGE-TRANSFER (I,I,J,J)
-    # p,q ∈ I (creations);  r,s ∈ J (annihilations)
-    # Signs: αα,ββ → +1;  αβ,βα → (-1)^χ = _rdm_sign(fock_ket,I,J)
-    # =========================================================
-    for ci in clusters
-        ci_idx = ci.idx
-        norb_i = length(ci)
-        off_i  = orb_offsets[ci_idx]
+                    if haskey(cluster_ops[ci_idx], "B") &&
+                       haskey(cluster_ops[ci_idx]["B"], ftrans_i) &&
+                       haskey(cluster_ops[cj_idx], "a") &&
+                       haskey(cluster_ops[cj_idx]["a"], ftrans_j)
 
-        for cj in clusters
-            ci_idx == cj.idx && continue
-            cj_idx = cj.idx
-            norb_j = length(cj)
-            off_j  = orb_offsets[cj_idx]
+                        B_i        = cluster_ops[ci_idx]["B"][ftrans_i]
+                        a_j        = cluster_ops[cj_idx]["a"][ftrans_j]
+                        state_sign = _rdm_sign(fock_ket, ci_idx, cj_idx)
 
-            other_k = [k for k in 1:N if k != ci_idx && k != cj_idx]
+                        bra_by_other = Dict{Vector{Int16},
+                            Vector{Tuple{Int16,Int16,MVector{R1,T}}}}()
+                        for (config, coeff) in configs_bra
+                            key = [config[k] for k in other_k]
+                            push!(get!(bra_by_other, key,
+                                       Tuple{Int16,Int16,MVector{R1,T}}[]),
+                                  (config[ci_idx], config[cj_idx], coeff))
+                        end
+                        ket_by_other = Dict{Vector{Int16},
+                            Vector{Tuple{Int16,Int16,MVector{R2,T}}}}()
+                        for (config, coeff) in configs_ket
+                            key = [config[k] for k in other_k]
+                            push!(get!(ket_by_other, key,
+                                       Tuple{Int16,Int16,MVector{R2,T}}[]),
+                                  (config[ci_idx], config[cj_idx], coeff))
+                        end
 
-            for (fock_ket, configs_ket) in ket.data
-                na_i, nb_i = fock_ket[ci_idx]
-                na_j, nb_j = fock_ket[cj_idx]
-                norb_i_max = length(clusters[ci_idx])
-                norb_j_max = length(clusters[cj_idx])
-
-                # ---- αα: create 2α at I, annihilate 2α at J ----
-                if na_j >= 2 && na_i + 2 <= norb_i_max
-                    fock_bra = replace(fock_ket,
-                                       [ci_idx, cj_idx],
-                                       [(na_i+2, nb_i), (na_j-2, nb_j)])
-                    if haskey(bra.data, fock_bra)
-                        ftrans_i = (fock_bra[ci_idx], fock_ket[ci_idx])
-                        ftrans_j = (fock_bra[cj_idx], fock_ket[cj_idx])
-                        if haskey(cluster_ops[ci_idx], "AA") &&
-                           haskey(cluster_ops[ci_idx]["AA"], ftrans_i) &&
-                           haskey(cluster_ops[cj_idx], "aa") &&
-                           haskey(cluster_ops[cj_idx]["aa"], ftrans_j)
-
-                            _raw_AAi = cluster_ops[ci_idx]["AA"][ftrans_i]
-                            AA_i = reshape(_raw_AAi, norb_i, norb_i, size(_raw_AAi,2), size(_raw_AAi,3))
-                            _raw_aaj = cluster_ops[cj_idx]["aa"][ftrans_j]
-                            aa_j = reshape(_raw_aaj, norb_j, norb_j, size(_raw_aaj,2), size(_raw_aaj,3))
-
-                            bra_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R1,T}}}}()
-                            for (config, coeff) in bra.data[fock_bra]
-                                key = [config[k] for k in other_k]
-                                push!(get!(bra_by_other, key, Tuple{Int16,Int16,MVector{R1,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
-                            ket_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R2,T}}}}()
-                            for (config, coeff) in configs_ket
-                                key = [config[k] for k in other_k]
-                                push!(get!(ket_by_other, key, Tuple{Int16,Int16,MVector{R2,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
-
-                            for (key, bra_list) in bra_by_other
-                                haskey(ket_by_other, key) || continue
-                                for (s_i, s_j, c_bra) in bra_list
-                                    for (t_i, t_j, c_ket) in ket_by_other[key]
-                                        for r2 in 1:R2, r1 in 1:R1
-                                            w = c_bra[r1] * c_ket[r2]
-                                            iszero(w) && continue
-                                            for s_orb in 1:norb_j, r_orb in 1:norb_j
-                                                aa_j_val = aa_j[s_orb, r_orb, s_j, t_j]
-                                                iszero(aa_j_val) && continue
-                                                for q_orb in 1:norb_i, p_orb in 1:norb_i
-                                                    Γ[off_i+p_orb, off_i+q_orb, off_j+r_orb, off_j+s_orb, r1, r2] +=
-                                                        AA_i[p_orb, q_orb, s_i, t_i] * aa_j_val * w
-                                                end
+                        for (key, bra_list) in bra_by_other
+                            haskey(ket_by_other, key) || continue
+                            for (s_i, s_j, c_bra) in bra_list
+                                for (t_i, t_j, c_ket) in ket_by_other[key]
+                                    for r2 in 1:R2, r1 in 1:R1
+                                        cp = state_sign * c_bra[r1] * c_ket[r2]
+                                        iszero(cp) && continue
+                                        for q in 1:norb_j
+                                            aj = a_j[q, s_j, t_j]
+                                            iszero(aj) && continue
+                                            for p in 1:norb_i
+                                                γ_ba_loc[tid][off_i+p, off_j+q, r1, r2] +=
+                                                    B_i[p, s_i, t_i] * aj * cp
                                             end
                                         end
                                     end
@@ -1839,180 +1588,25 @@ function compute_2rdm_blas(bra::TPSCIstate{T,N,R1},
                             end
                         end
                     end
-                end  # αα CT
+                end
+            end  # β→α inter
 
-                # ---- ββ: create 2β at I, annihilate 2β at J ----
-                if nb_j >= 2 && nb_i + 2 <= norb_i_max
-                    fock_bra = replace(fock_ket,
-                                       [ci_idx, cj_idx],
-                                       [(na_i, nb_i+2), (na_j, nb_j-2)])
-                    if haskey(bra.data, fock_bra)
-                        ftrans_i = (fock_bra[ci_idx], fock_ket[ci_idx])
-                        ftrans_j = (fock_bra[cj_idx], fock_ket[cj_idx])
-                        if haskey(cluster_ops[ci_idx], "BB") &&
-                           haskey(cluster_ops[ci_idx]["BB"], ftrans_i) &&
-                           haskey(cluster_ops[cj_idx], "bb") &&
-                           haskey(cluster_ops[cj_idx]["bb"], ftrans_j)
+        end  # fock_ket loop
+    end  # inter-cluster @threads
 
-                            _raw_BBi = cluster_ops[ci_idx]["BB"][ftrans_i]
-                            BB_i = reshape(_raw_BBi, norb_i, norb_i, size(_raw_BBi,2), size(_raw_BBi,3))
-                            _raw_bbj = cluster_ops[cj_idx]["bb"][ftrans_j]
-                            bb_j = reshape(_raw_bbj, norb_j, norb_j, size(_raw_bbj,2), size(_raw_bbj,3))
-
-                            bra_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R1,T}}}}()
-                            for (config, coeff) in bra.data[fock_bra]
-                                key = [config[k] for k in other_k]
-                                push!(get!(bra_by_other, key, Tuple{Int16,Int16,MVector{R1,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
-                            ket_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R2,T}}}}()
-                            for (config, coeff) in configs_ket
-                                key = [config[k] for k in other_k]
-                                push!(get!(ket_by_other, key, Tuple{Int16,Int16,MVector{R2,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
-
-                            for (key, bra_list) in bra_by_other
-                                haskey(ket_by_other, key) || continue
-                                for (s_i, s_j, c_bra) in bra_list
-                                    for (t_i, t_j, c_ket) in ket_by_other[key]
-                                        for r2 in 1:R2, r1 in 1:R1
-                                            w = c_bra[r1] * c_ket[r2]
-                                            iszero(w) && continue
-                                            for s_orb in 1:norb_j, r_orb in 1:norb_j
-                                                bb_j_val = bb_j[s_orb, r_orb, s_j, t_j]
-                                                iszero(bb_j_val) && continue
-                                                for q_orb in 1:norb_i, p_orb in 1:norb_i
-                                                    Γ[off_i+p_orb, off_i+q_orb, off_j+r_orb, off_j+s_orb, r1, r2] +=
-                                                        BB_i[p_orb, q_orb, s_i, t_i] * bb_j_val * w
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end  # ββ CT
-
-                # ---- αβ: create α+β at I, annihilate α+β at J ----
-                if na_j >= 1 && nb_j >= 1 && na_i + 1 <= norb_i_max && nb_i + 1 <= norb_i_max
-                    fock_bra = replace(fock_ket,
-                                       [ci_idx, cj_idx],
-                                       [(na_i+1, nb_i+1), (na_j-1, nb_j-1)])
-                    if haskey(bra.data, fock_bra)
-                        ftrans_i = (fock_bra[ci_idx], fock_ket[ci_idx])
-                        ftrans_j = (fock_bra[cj_idx], fock_ket[cj_idx])
-                        if haskey(cluster_ops[ci_idx], "AB") &&
-                           haskey(cluster_ops[ci_idx]["AB"], ftrans_i) &&
-                           haskey(cluster_ops[cj_idx], "ba") &&
-                           haskey(cluster_ops[cj_idx]["ba"], ftrans_j)
-
-                            _raw_ABi = cluster_ops[ci_idx]["AB"][ftrans_i]
-                            AB_i = reshape(_raw_ABi, norb_i, norb_i, size(_raw_ABi,2), size(_raw_ABi,3))
-                            _raw_baj = cluster_ops[cj_idx]["ba"][ftrans_j]
-                            ba_j = reshape(_raw_baj, norb_j, norb_j, size(_raw_baj,2), size(_raw_baj,3))
-                            sign_ab = _rdm_sign(fock_ket, ci_idx, cj_idx)
-
-                            bra_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R1,T}}}}()
-                            for (config, coeff) in bra.data[fock_bra]
-                                key = [config[k] for k in other_k]
-                                push!(get!(bra_by_other, key, Tuple{Int16,Int16,MVector{R1,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
-                            ket_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R2,T}}}}()
-                            for (config, coeff) in configs_ket
-                                key = [config[k] for k in other_k]
-                                push!(get!(ket_by_other, key, Tuple{Int16,Int16,MVector{R2,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
-
-                            for (key, bra_list) in bra_by_other
-                                haskey(ket_by_other, key) || continue
-                                for (s_i, s_j, c_bra) in bra_list
-                                    for (t_i, t_j, c_ket) in ket_by_other[key]
-                                        for r2 in 1:R2, r1 in 1:R1
-                                            w = sign_ab * c_bra[r1] * c_ket[r2]
-                                            iszero(w) && continue
-                                            for s_orb in 1:norb_j, r_orb in 1:norb_j
-                                                ba_j_val = ba_j[s_orb, r_orb, s_j, t_j]
-                                                iszero(ba_j_val) && continue
-                                                for q_orb in 1:norb_i, p_orb in 1:norb_i
-                                                    Γ[off_i+p_orb, off_i+q_orb, off_j+r_orb, off_j+s_orb, r1, r2] +=
-                                                        AB_i[p_orb, q_orb, s_i, t_i] * ba_j_val * w
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end  # αβ CT
-
-                # ---- βα: create β+α at I, annihilate β+α at J ----
-                if na_j >= 1 && nb_j >= 1 && na_i + 1 <= norb_i_max && nb_i + 1 <= norb_i_max
-                    fock_bra = replace(fock_ket,
-                                       [ci_idx, cj_idx],
-                                       [(na_i+1, nb_i+1), (na_j-1, nb_j-1)])
-                    if haskey(bra.data, fock_bra)
-                        ftrans_i = (fock_bra[ci_idx], fock_ket[ci_idx])
-                        ftrans_j = (fock_bra[cj_idx], fock_ket[cj_idx])
-                        if haskey(cluster_ops[ci_idx], "BA") &&
-                           haskey(cluster_ops[ci_idx]["BA"], ftrans_i) &&
-                           haskey(cluster_ops[cj_idx], "ab") &&
-                           haskey(cluster_ops[cj_idx]["ab"], ftrans_j)
-
-                            _raw_BAi = cluster_ops[ci_idx]["BA"][ftrans_i]
-                            BA_i = reshape(_raw_BAi, norb_i, norb_i, size(_raw_BAi,2), size(_raw_BAi,3))
-                            _raw_abj = cluster_ops[cj_idx]["ab"][ftrans_j]
-                            ab_j = reshape(_raw_abj, norb_j, norb_j, size(_raw_abj,2), size(_raw_abj,3))
-                            sign_ba = _rdm_sign(fock_ket, ci_idx, cj_idx)
-
-                            bra_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R1,T}}}}()
-                            for (config, coeff) in bra.data[fock_bra]
-                                key = [config[k] for k in other_k]
-                                push!(get!(bra_by_other, key, Tuple{Int16,Int16,MVector{R1,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
-                            ket_by_other = Dict{Vector{Int16}, Vector{Tuple{Int16,Int16,MVector{R2,T}}}}()
-                            for (config, coeff) in configs_ket
-                                key = [config[k] for k in other_k]
-                                push!(get!(ket_by_other, key, Tuple{Int16,Int16,MVector{R2,T}}[]),
-                                      (config[ci_idx], config[cj_idx], coeff))
-                            end
-
-                            for (key, bra_list) in bra_by_other
-                                haskey(ket_by_other, key) || continue
-                                for (s_i, s_j, c_bra) in bra_list
-                                    for (t_i, t_j, c_ket) in ket_by_other[key]
-                                        for r2 in 1:R2, r1 in 1:R1
-                                            w = sign_ba * c_bra[r1] * c_ket[r2]
-                                            iszero(w) && continue
-                                            for s_orb in 1:norb_j, r_orb in 1:norb_j
-                                                ab_j_val = ab_j[s_orb, r_orb, s_j, t_j]
-                                                iszero(ab_j_val) && continue
-                                                for q_orb in 1:norb_i, p_orb in 1:norb_i
-                                                    Γ[off_i+p_orb, off_i+q_orb, off_j+r_orb, off_j+s_orb, r1, r2] +=
-                                                        BA_i[p_orb, q_orb, s_i, t_i] * ab_j_val * w
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end  # βα CT
-
-            end  # fock_ket
-        end  # cj
-    end  # ci (I,I,J,J)
-
-    return Γ
+    γ_ab = sum(γ_ab_loc)
+    γ_ba = sum(γ_ba_loc)
+    return γ_ab, γ_ba
 end
 
-function compute_2rdm_blas(psi::TPSCIstate{T,N,R},
-                           cluster_ops::Vector{ClusterOps{T}}) where {T,N,R}
-    return compute_2rdm_blas(psi, psi, cluster_ops)
+
+"""
+    compute_1rdm_sf_threaded(psi, cluster_ops)
+
+Single-state parallel spin-flip 1-RDM.
+"""
+function compute_1rdm_sf_threaded(psi::TPSCIstate{T,N,R},
+                                   cluster_ops::Vector{ClusterOps{T}}) where {T,N,R}
+    return compute_1rdm_sf_threaded(psi, psi, cluster_ops)
 end
+
