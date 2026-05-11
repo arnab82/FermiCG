@@ -4,7 +4,7 @@ using Printf
 using Test
 using JLD2
 
-@load "./pt2_test/_testdata_cmf_h9.jld2"
+@load "../test/_testdata_cmf_h9.jld2"
 # define clusters
 ref_fock = FockConfig(init_fspace)
 # Do TPS

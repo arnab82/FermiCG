@@ -5,3 +5,4 @@ docs/site/
 venv/
 __pycache__
 .DS_Store
+examples/notes/cluster_bases_cmf_26.jld2

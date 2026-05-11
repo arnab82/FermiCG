@@ -11,13 +11,17 @@ using Compat
 using KrylovKit
 using LinearAlgebra
 using Printf
+using IterativeSolvers
+using SparseArrays
+using LinearOperators
+using Krylov
 using TimerOutputs
 using OrderedCollections 
 using IterTools
 using LinearAlgebra
 using StaticArrays
 using TensorOperations
-
+using IterativeSolvers
 using ThreadPools
 using Distributed
 using JLD2

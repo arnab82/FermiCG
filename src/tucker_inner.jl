@@ -98,22 +98,21 @@ function cache_hamiltonian(bra::BSTstate{T,N,R}, ket::BSTstate{T,N,R}, cluster_o
     #end
 
     keys_to_loop = [keys(clustered_ham.trans)...]
-    
-    # set up scratch arrays
-    nscr = 10 
+
+    # set up scratch arrays — safe with :static scheduler (no task migration)
+    nscr = 10
     scr_f = Vector{Vector{Vector{T}} }()
     for tid in 1:Threads.nthreads()
-        tmp = Vector{Vector{T}}() 
+        tmp = Vector{Vector{T}}()
         [push!(tmp, zeros(T,100000)) for i in 1:nscr]
         push!(scr_f, tmp)
     end
-   
-    
+
     if verbose>0
         @printf(" %-50s", " Number of threaded jobs:")
         println(length(keys_to_loop))
     end
-    
+
     Threads.@threads :static for ftrans in keys_to_loop
         scr = scr_f[Threads.threadid()]
         terms = clustered_ham[ftrans]
@@ -175,22 +174,22 @@ function build_sigma!(sigma_vector::BSTstate{T,N,R}, ci_vector::BSTstate{T,N,R},
             push!(jobs, [fock_bra, config_bra])
         end
     end
-    
+
     # set up scratch arrays
-    nscr = 10 
+    nscr = 10
     scr_f = Vector{Vector{Vector{T}} }()
     for tid in 1:Threads.nthreads()
-        tmp = Vector{Vector{T}}() 
+        tmp = Vector{Vector{T}}()
         [push!(tmp, zeros(T,1000)) for i in 1:nscr]
         push!(scr_f, tmp)
     end
-   
+
     function do_job(job)
-        
+
         fock_bra = job[1]
         config_bra = job[2]
         coeff_bra = sigma_vector[fock_bra][config_bra]
-        
+
         for (fock_ket, configs_ket) in ci_vector
             fock_trans = fock_bra - fock_ket
 
@@ -207,10 +206,6 @@ function build_sigma!(sigma_vector::BSTstate{T,N,R}, ci_vector::BSTstate{T,N,R},
                     check_term(term, fock_bra, config_bra, fock_ket, config_ket) || continue
 
                     # these methods dispatched on type of term
-                    #coeff_bra.core .= form_sigma_block!(term, cluster_ops, fock_bra, config_bra,
-                    #                              fock_ket, config_ket,
-                    #                              coeff_bra, coeff_ket,
-                    #                              cache=cache)
                     out = form_sigma_block!(term, cluster_ops, fock_bra, config_bra,
                                                   fock_ket, config_ket,
                                                   coeff_bra, coeff_ket,
@@ -224,7 +219,7 @@ function build_sigma!(sigma_vector::BSTstate{T,N,R}, ci_vector::BSTstate{T,N,R},
             end
         end
     end
-   
+
     Threads.@threads for job in jobs
     #for job in jobs
         do_job(job)
@@ -266,7 +261,6 @@ function build_sigma_cepa!(sigma_vector::BSTstate{T,N,R}, ci_vector::BSTstate{T,
 
     Threads.@threads for job in jobs
         scr = [zeros(T, 1000) for _ in 1:nscr]   # per-task, no sharing
-
         task_output = []
 
         fock_bra   = job[1]
