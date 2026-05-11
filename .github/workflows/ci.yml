@@ -4,10 +4,12 @@ on:
     branches:
       - main
       - cepa_tpsci
+      - property-tdm
   pull_request:
     branches:
       - main
       - cepa_tpsci
+      - property-tdm
 
 jobs:
   test:
