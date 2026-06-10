@@ -26,6 +26,16 @@ using Test
 using LinearAlgebra
 using JLD2
 
+function _slice_tpsci_roots(v, roots)
+    out = FermiCG.TPSCIstate(v; R=length(roots))
+    for (fock, configs) in v.data
+        for (config, coeffs) in configs
+            out[fock][config] .= coeffs[roots]
+        end
+    end
+    return out
+end
+
 @testset "compute_1rdm_threaded  (he4, 64bit)" begin
 
     println("\n=== Loading he4 test data ===")
@@ -35,16 +45,6 @@ using JLD2
     clustered_ham = FermiCG.extract_ClusteredTerms(ints, clusters)
     cluster_ops   = FermiCG.compute_cluster_ops(cluster_bases, ints)
     FermiCG.add_cmf_operators!(cluster_ops, cluster_bases, ints, d1.a, d1.b)
-
-    # Build cluster operator tables needed for 1-RDM
-    for ci in clusters
-        cb = cluster_bases[ci.idx]
-        cluster_ops[ci.idx]["A"],  cluster_ops[ci.idx]["a"]  = FermiCG.tdm_A(cb, "alpha")
-        cluster_ops[ci.idx]["B"],  cluster_ops[ci.idx]["b"]  = FermiCG.tdm_A(cb, "beta")
-        cluster_ops[ci.idx]["Aa"] = FermiCG.tdm_Aa(cb, "alpha")
-        cluster_ops[ci.idx]["Bb"] = FermiCG.tdm_Aa(cb, "beta")
-        cluster_ops[ci.idx]["Ab"], cluster_ops[ci.idx]["Ba"] = FermiCG.tdm_Ab(cb)
-    end
 
     # Run TPSCI to get converged wavefunctions
     nroots    = 5
@@ -117,8 +117,8 @@ using JLD2
     @testset "Transition 1-RDM serial == threaded" begin
         # Use first root as bra, rest as ket by slicing the state
         # Build single-root states for a clean bra/ket pair
-        bra = FermiCG.TPSCIstate(v0; roots=[1])
-        ket = FermiCG.TPSCIstate(v0; roots=[2,3,4,5])
+        bra = _slice_tpsci_roots(v0, [1])
+        ket = _slice_tpsci_roots(v0, [2,3,4,5])
 
         γ_aa_s, γ_bb_s = FermiCG.compute_1rdm(bra, ket, cluster_ops)
         γ_aa_t, γ_bb_t = FermiCG.compute_1rdm_threaded(bra, ket, cluster_ops)

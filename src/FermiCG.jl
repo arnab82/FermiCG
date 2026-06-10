@@ -115,6 +115,8 @@ export n_orb
 export add_subspace!
 export add_fockconfig!
 export expand_each_fock_space!
+export compute_cluster_ops_2rdm
+export add_spinfree_2rdm_ops!
 export block_sparse_tucker
 export correlation_functions
 export compute_1rdm
@@ -127,4 +129,7 @@ export compute_transition_dipoles
 export compute_oscillator_strengths
 export absorption_spectrum
 export print_stick_spectrum
+export compute_2rdm
+export compute_2rdm_threaded
+export compute_2rdm_blas
 end

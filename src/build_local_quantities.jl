@@ -33,9 +33,57 @@ function get_ortho_compliment(tss::ClusterSubspace, cb::ClusterBasis)
 end
 
 
+"""
+    tdm_spinfree_2rdm(cb::ClusterBasis; verbose=0)
+
+Compute the local spin-free two-body transition density
+
+    Gamma[p,q,r,s,u,v] = sum_{sigma,tau} <u|p'_sigma q'_tau s_tau r_sigma|v>
+
+for each Fock-neutral sector of a cluster basis. The first four dimensions are
+local orbital indices in the same convention as `compute_2rdm`; the final two
+dimensions are bra and ket cluster-basis state indices.
+"""
+function tdm_spinfree_2rdm(cb::ClusterBasis; verbose=0)
+    verbose == 0 || println("")
+    norbs = length(cb.cluster)
+
+    dicti = Dict{Tuple,Array}()
+    for (fock, basis) in cb
+        nstates = size(basis, 2)
+        T = eltype(basis.vectors)
+        block = zeros(T, norbs, norbs, norbs, norbs, nstates, nstates)
+
+        for ket_idx in 1:nstates
+            ket_vec = basis.vectors[:, ket_idx]
+            for bra_idx in 1:nstates
+                bra_vec = basis.vectors[:, bra_idx]
+                _, _, rdm2aa, rdm2bb, rdm2ab =
+                    ActiveSpaceSolvers.FCI.compute_rdm1_rdm2(basis.ansatz, bra_vec, ket_vec)
+
+                for s_orb in 1:norbs, r_orb in 1:norbs, q_orb in 1:norbs, p_orb in 1:norbs
+                    block[p_orb, q_orb, r_orb, s_orb, bra_idx, ket_idx] =
+                        rdm2aa[p_orb, r_orb, q_orb, s_orb] +
+                        rdm2bb[p_orb, r_orb, q_orb, s_orb] +
+                        rdm2ab[p_orb, r_orb, q_orb, s_orb] +
+                        rdm2ab[q_orb, s_orb, p_orb, r_orb]
+                end
+            end
+        end
+
+        dicti[(fock, fock)] = block
+    end
+    return dicti
+end
+
+
 
 """
-    compute_cluster_ops(cluster_bases::Vector{ClusterBasis})
+    compute_cluster_ops(cluster_bases::Vector{ClusterBasis}, ints)
+
+Build the standard local operator tables used by TPSCI. This intentionally
+does not build the expensive local spin-free 2-RDM table `Ppqsr`; use
+`compute_cluster_ops_2rdm` when calling `compute_2rdm`.
 """
 function compute_cluster_ops(cluster_bases, ints::InCoreInts{T}) where {T}
 #={{{=#
@@ -190,6 +238,47 @@ function compute_cluster_ops(cluster_bases, ints::InCoreInts{T}) where {T}
     return cluster_ops
 end
     #=}}}=#
+
+
+"""
+    add_spinfree_2rdm_ops!(cluster_ops, cluster_bases)
+
+Add the exact local spin-free 2-RDM transition table `Ppqsr` to an existing
+`cluster_ops` object. This is only needed for physically complete
+`compute_2rdm` calculations.
+"""
+function add_spinfree_2rdm_ops!(cluster_ops::Vector{ClusterOps{T}},
+                                cluster_bases) where {T}
+    for cb in cluster_bases
+        ci = cb.cluster
+        display(ci)
+        flush(stdout)
+
+        Ppqsr = FermiCG.tdm_spinfree_2rdm(cb)
+        for ftrans in keys(Ppqsr)
+            data = Ppqsr[ftrans]
+            dim1 = prod(size(data)[1:(ndims(data)-2)])
+            dim2 = size(data, ndims(data)-1)
+            dim3 = size(data, ndims(data))
+            Ppqsr[ftrans] = copy(reshape(data, (dim1, dim2, dim3)))
+        end
+        cluster_ops[ci.idx]["Ppqsr"] = Ppqsr
+    end
+    return cluster_ops
+end
+
+
+"""
+    compute_cluster_ops_2rdm(cluster_bases, ints)
+
+Build the standard TPSCI local operators plus the expensive `Ppqsr` table
+required by `compute_2rdm`. Use this instead of `compute_cluster_ops` only
+when you need a 2-RDM.
+"""
+function compute_cluster_ops_2rdm(cluster_bases, ints::InCoreInts{T}) where {T}
+    cluster_ops = FermiCG.compute_cluster_ops(cluster_bases, ints)
+    return FermiCG.add_spinfree_2rdm_ops!(cluster_ops, cluster_bases)
+end
 
 
     """
@@ -1252,4 +1341,3 @@ function compute_cluster_est_basis(ints::InCoreInts{T}, clusters::Vector{MOClust
 end
 #=}}}=#
     
-
