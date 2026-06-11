@@ -11,13 +11,17 @@ using Compat
 using KrylovKit
 using LinearAlgebra
 using Printf
+using IterativeSolvers
+using SparseArrays
+using LinearOperators
+using Krylov
 using TimerOutputs
 using OrderedCollections 
 using IterTools
 using LinearAlgebra
 using StaticArrays
 using TensorOperations
-
+using IterativeSolvers
 using ThreadPools
 using Distributed
 using JLD2
@@ -88,6 +92,9 @@ include("dense_outer.jl")
 include("spt_variance.jl")
 # include("tps_trimci.jl")
 
+include("tpsci_property.jl")
+include("absorption_spectrum.jl")
+
 #
 #####################################
 
@@ -108,6 +115,21 @@ export n_orb
 export add_subspace!
 export add_fockconfig!
 export expand_each_fock_space!
+export compute_cluster_ops_2rdm
+export add_spinfree_2rdm_ops!
 export block_sparse_tucker
 export correlation_functions
+export compute_1rdm
+export compute_1rdm_sf
+export compute_1rdm_threaded
+export compute_1rdm_sf_threaded
+export contract_1rdm_property
+export compute_1e_property_direct
+export compute_transition_dipoles
+export compute_oscillator_strengths
+export absorption_spectrum
+export print_stick_spectrum
+export compute_2rdm
+export compute_2rdm_threaded
+export compute_2rdm_blas
 end

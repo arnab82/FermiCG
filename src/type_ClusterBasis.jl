@@ -79,3 +79,44 @@ function check_basis_orthogonality(basis::ClusterBasis; thresh=1e-12)
     end
 end
 
+using LinearAlgebra
+
+"""
+Merge two Vector{ClusterBasis}: for each cluster, union the Fock sectors.
+If a sector exists in both, keep the one with more roots (columns in vectors).
+If you want to combine states from both (e.g. augment ground with CT states),
+pass augment=true — this hcats vectors and re-orthogonalizes via QR.
+"""
+function merge_cluster_bases(cb1::Vector{T}, cb2::Vector{T}; augment=false) where T
+    @assert length(cb1) == length(cb2)
+    result = Vector{T}(undef, length(cb1))
+    for i in eachindex(cb1)
+        new_cb = FermiCG.ClusterBasis(cb1[i].cluster)
+        # seed with all sectors from cb1
+        for (fspace, sol) in cb1[i]
+            new_cb[fspace] = sol
+        end
+        # merge sectors from cb2
+        for (fspace, sol2) in cb2[i]
+            if !haskey(new_cb, fspace)
+                new_cb[fspace] = sol2
+            elseif augment
+                sol1 = new_cb[fspace]
+                # concatenate vectors and re-orthogonalize
+                combined = hcat(sol1.vectors, sol2.vectors)
+                Q, _ = qr(combined)
+                n = size(combined, 2)
+                vecs = Matrix(Q)[:, 1:n]
+                energies = vcat(sol1.energies, sol2.energies)[1:n]
+                new_cb[fspace] = ActiveSpaceSolvers.Solution(sol1.ansatz, energies, vecs)
+            else
+                # keep whichever has more roots
+                if size(sol2.vectors, 2) > size(new_cb[fspace].vectors, 2)
+                    new_cb[fspace] = sol2
+                end
+            end
+        end
+        result[i] = new_cb
+    end
+    return result
+end

@@ -5,3 +5,13 @@ docs/site/
 venv/
 __pycache__
 .DS_Store
+# Large data/output files in examples/notes — not for version control
+examples/notes/*.jld2
+examples/notes/*.npy
+examples/notes/*.npz
+examples/notes/*.molden
+examples/notes/*.fchk
+examples/notes/*.pdf
+examples/notes/*.png
+examples/notes/*.txt
+examples/notes/tpsci_results.jld2
